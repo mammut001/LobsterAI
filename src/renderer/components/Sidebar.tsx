@@ -5,17 +5,19 @@ import { coworkService } from '../services/cowork';
 import { i18nService } from '../services/i18n';
 import CoworkSessionList from './cowork/CoworkSessionList';
 import CoworkSearchModal from './cowork/CoworkSearchModal';
-import { MagnifyingGlassIcon, PuzzlePieceIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, PuzzlePieceIcon, ClockIcon, UserGroupIcon, CircleStackIcon } from '@heroicons/react/24/outline';
 import ComposeIcon from './icons/ComposeIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
 
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'agents' | 'agentWorkflow';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
+  onShowAgents: () => void;
+  onShowWorkflow: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -28,6 +30,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowSkills,
   onShowCowork,
   onShowScheduledTasks,
+  onShowAgents,
+  onShowWorkflow,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -73,9 +77,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`shrink-0 dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted flex flex-col sidebar-transition overflow-hidden ${
-        isCollapsed ? 'w-0' : 'w-60'
-      }`}
+      className={`shrink-0 dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted flex flex-col sidebar-transition overflow-hidden ${isCollapsed ? 'w-0' : 'w-60'
+        }`}
     >
       <div className="pt-3 pb-3">
         <div className="draggable sidebar-header-drag h-8 flex items-center justify-between px-3">
@@ -141,6 +144,36 @@ const Sidebar: React.FC<SidebarProps> = ({
             <PuzzlePieceIcon className="h-4 w-4" />
             {i18nService.t('skills')}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsSearchOpen(false);
+              onShowAgents();
+            }}
+            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+              activeView === 'agents'
+                ? 'dark:text-claude-darkText text-claude-text dark:bg-claude-darkSurfaceHover bg-claude-surfaceHover'
+                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            }`}
+          >
+            <UserGroupIcon className="h-4 w-4" />
+            {i18nService.t('agentsTab')}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsSearchOpen(false);
+              onShowWorkflow();
+            }}
+            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+              activeView === 'agentWorkflow'
+                ? 'dark:text-claude-darkText text-claude-text dark:bg-claude-darkSurfaceHover bg-claude-surfaceHover'
+                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            }`}
+          >
+            <CircleStackIcon className="h-4 w-4" />
+            {i18nService.t('workflowTitle')}
+          </button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-2.5 pb-4">
@@ -165,6 +198,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         onDeleteSession={handleDeleteSession}
         onTogglePin={handleTogglePin}
         onRenameSession={handleRenameSession}
+        onNavigateHome={onShowCowork}
       />
       <div className="px-3 pb-3 pt-1">
         <button

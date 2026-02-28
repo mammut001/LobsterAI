@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, XMarkIcon, UserGroupIcon } from '@heroicons/react/24/outline';
 import { i18nService } from '../../services/i18n';
 import type { CoworkSessionSummary } from '../../types/cowork';
 import CoworkSessionList from './CoworkSessionList';
+import AgentsPanel from './AgentsPanel';
 
 interface CoworkSearchModalProps {
   isOpen: boolean;
@@ -13,7 +14,10 @@ interface CoworkSearchModalProps {
   onDeleteSession: (sessionId: string) => void;
   onTogglePin: (sessionId: string, pinned: boolean) => void;
   onRenameSession: (sessionId: string, title: string) => void;
+  onNavigateHome?: () => void;
 }
+
+type TabType = 'search' | 'agents';
 
 const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
   isOpen,
@@ -24,8 +28,10 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
   onDeleteSession,
   onTogglePin,
   onRenameSession,
+  onNavigateHome,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<TabType>('search');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const filteredSessions = useMemo(() => {
@@ -37,13 +43,16 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
+        if (activeTab === 'search') {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        }
       });
       return;
     }
     setSearchQuery('');
-  }, [isOpen]);
+    setActiveTab('search');
+  }, [isOpen, activeTab]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -63,6 +72,16 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    if (tab === 'search') {
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      });
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center modal-backdrop p-6"
@@ -75,17 +94,33 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
         aria-label={i18nService.t('search')}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center gap-3 px-4 py-3 border-b dark:border-claude-darkBorder border-claude-border">
-          <div className="relative flex-1">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 dark:text-claude-darkTextSecondary text-claude-textSecondary" />
-            <input
-              ref={searchInputRef}
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={i18nService.t('searchConversations')}
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkText text-claude-text dark:placeholder-claude-darkTextSecondary placeholder-claude-textSecondary border dark:border-claude-darkBorder border-claude-border focus:outline-none focus:ring-2 focus:ring-claude-accent"
-            />
-          </div>
+        {/* Tabs */}
+        <div className="flex items-center gap-1 px-4 pt-3 border-b-0">
+          <button
+            type="button"
+            onClick={() => handleTabChange('search')}
+            className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'search'
+                ? 'bg-claude-accent/10 text-claude-accent'
+                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            }`}
+          >
+            <MagnifyingGlassIcon className="h-4 w-4" />
+            {i18nService.t('search')}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTabChange('agents')}
+            className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'agents'
+                ? 'bg-claude-accent/10 text-claude-accent'
+                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            }`}
+          >
+            <UserGroupIcon className="h-4 w-4" />
+            {i18nService.t('agentsTab')}
+          </button>
+          <div className="flex-1" />
           <button
             type="button"
             onClick={onClose}
@@ -95,8 +130,33 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Search Input - Only show in search tab */}
+        {activeTab === 'search' && (
+          <div className="flex items-center gap-3 px-4 py-3 border-b dark:border-claude-darkBorder border-claude-border">
+            <div className="relative flex-1">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 dark:text-claude-darkTextSecondary text-claude-textSecondary" />
+              <input
+                ref={searchInputRef}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={i18nService.t('searchConversations')}
+                className="w-full pl-9 pr-3 py-2 text-sm rounded-lg dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkText text-claude-text dark:placeholder-claude-darkTextSecondary placeholder-claude-textSecondary border dark:border-claude-darkBorder border-claude-border focus:outline-none focus:ring-2 focus:ring-claude-accent"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Content */}
         <div className="px-3 py-3 max-h-[60vh] overflow-y-auto">
-          {filteredSessions.length === 0 ? (
+          {activeTab === 'agents' ? (
+            <AgentsPanel
+              onSelectSession={(sessionId) => {
+                handleSelectSession(sessionId);
+              }}
+              onNavigateHome={onNavigateHome}
+            />
+          ) : filteredSessions.length === 0 ? (
             <div className="py-10 text-center text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">
               {i18nService.t('searchNoResults')}
             </div>

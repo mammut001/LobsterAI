@@ -9,7 +9,8 @@ import TaskForm from './TaskForm';
 import TaskDetail from './TaskDetail';
 import AllRunsHistory from './AllRunsHistory';
 import DeleteConfirmModal from './DeleteConfirmModal';
-import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import AgentsPanel from '../cowork/AgentsPanel';
+import { ArrowLeftIcon, UserGroupIcon } from '@heroicons/react/24/outline';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
@@ -19,15 +20,17 @@ interface ScheduledTasksViewProps {
   onToggleSidebar?: () => void;
   onNewChat?: () => void;
   updateBadge?: React.ReactNode;
+  onNavigateHome?: () => void;
 }
 
-type TabType = 'tasks' | 'history';
+type TabType = 'tasks' | 'history' | 'agents';
 
 const ScheduledTasksView: React.FC<ScheduledTasksViewProps> = ({
   isSidebarCollapsed,
   onToggleSidebar,
   onNewChat,
   updateBadge,
+  onNavigateHome,
 }) => {
   const dispatch = useDispatch();
   const isMac = window.electron.platform === 'darwin';
@@ -150,6 +153,21 @@ const ScheduledTasksView: React.FC<ScheduledTasksViewProps> = ({
                 <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-claude-accent rounded-t" />
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => handleTabChange('agents')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors relative ${
+                activeTab === 'agents'
+                  ? 'dark:text-claude-darkText text-claude-text'
+                  : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'
+              }`}
+            >
+              <UserGroupIcon className="h-4 w-4" />
+              {i18nService.t('agentsTab')}
+              {activeTab === 'agents' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-claude-accent rounded-t" />
+              )}
+            </button>
           </div>
           {activeTab === 'tasks' && (
             <button
@@ -165,7 +183,11 @@ const ScheduledTasksView: React.FC<ScheduledTasksViewProps> = ({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {showTabs && activeTab === 'history' ? (
+        {showTabs && activeTab === 'agents' ? (
+          <div className="p-4">
+            <AgentsPanel onNavigateHome={onNavigateHome} />
+          </div>
+        ) : showTabs && activeTab === 'history' ? (
           <AllRunsHistory />
         ) : (
           <>

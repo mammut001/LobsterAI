@@ -533,6 +533,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     // 定时任务
     scheduledTasks: '定时任务',
     scheduledTasksTitle: '定时任务',
+
+    // Agent Workflow
+    agentWorkflow: '智能体工作流',
+
+    // 定时任务
     scheduledTasksNewTask: '新建任务',
     scheduledTasksEmptyState: '暂无定时任务',
     scheduledTasksEmptyHint: '创建定时任务，让 AI 按计划自动执行',
@@ -656,6 +661,33 @@ const translations: Record<LanguageType, Record<string, string>> = {
     scheduledTasksDetailNotify: '通知',
     scheduledTasksToggleWarningAtPast: '该任务的执行时间已过，启用后将不会运行',
     scheduledTasksToggleWarningExpired: '该任务已过期，启用后将不会运行',
+
+    // Agents
+    agents: 'Agents',
+    agentsTab: 'Agents',
+    agentsRunning: '运行中',
+    agentsIdle: '空闲',
+    agentsCompleted: '已完成',
+    agentsError: '错误',
+    agentsNoAgents: '暂无 Agent',
+    agentsViewSession: '查看任务',
+    agentsStopSession: '停止任务',
+
+    // Workflow
+    workflowTitle: '工作流设计器',
+    workflowAddAgent: '添加 Agent',
+    workflowAddSkill: '技能库',
+    workflowRunWorkflow: '运行工作流',
+    workflowClearCanvas: '清空画布',
+    workflowFitView: '适应视图',
+    workflowOnComplete: '完成时',
+    workflowOnError: '错误时',
+    workflowAlways: '始终',
+    workflowNoAgents: '暂无 Agent，请点击上方按钮添加',
+    workflowExecutionOrder: '执行顺序',
+    workflowSkills: '技能',
+    workflowCustomSkill: '自定义技能名...',
+    workflowReset: '重置',
   },
   en: {
     // Common
@@ -1185,6 +1217,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     // Scheduled Tasks
     scheduledTasks: 'Scheduled Tasks',
     scheduledTasksTitle: 'Scheduled Tasks',
+
+    // Agent Workflow
+    agentWorkflow: 'Agent Workflow',
+
+    // Scheduled Tasks
     scheduledTasksNewTask: 'New Task',
     scheduledTasksEmptyState: 'No scheduled tasks',
     scheduledTasksEmptyHint: 'Create scheduled tasks to automate AI execution on a schedule',
@@ -1308,6 +1345,33 @@ const translations: Record<LanguageType, Record<string, string>> = {
     scheduledTasksDetailNotify: 'Notification',
     scheduledTasksToggleWarningAtPast: 'The execution time of this task has passed. It will not run after enabling',
     scheduledTasksToggleWarningExpired: 'This task has expired. It will not run after enabling',
+
+    // Agents
+    agents: 'Agents',
+    agentsTab: 'Agents',
+    agentsRunning: 'Running',
+    agentsIdle: 'Idle',
+    agentsCompleted: 'Completed',
+    agentsError: 'Error',
+    agentsNoAgents: 'No Agents',
+    agentsViewSession: 'View Task',
+    agentsStopSession: 'Stop Task',
+
+    // Workflow
+    workflowTitle: 'Workflow Designer',
+    workflowAddAgent: 'Add Agent',
+    workflowAddSkill: 'Skills',
+    workflowRunWorkflow: 'Run Workflow',
+    workflowClearCanvas: 'Clear Canvas',
+    workflowFitView: 'Fit View',
+    workflowOnComplete: 'On Complete',
+    workflowOnError: 'On Error',
+    workflowAlways: 'Always',
+    workflowNoAgents: 'No agents yet, click the button above to add',
+    workflowExecutionOrder: 'Execution Order',
+    workflowSkills: 'Skills',
+    workflowCustomSkill: 'Custom skill name...',
+    workflowReset: 'Reset',
   }
 };
 

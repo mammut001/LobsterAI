@@ -189,7 +189,12 @@ When reviewing code:
 1. Check for code readability and maintainability
 2. Identify potential security vulnerabilities
 3. Look for performance optimizations
-4. Verify proper error handling`,
+4. Verify proper error handling
+
+ROUTING REQUIREMENT:
+You must conclude your output with exactly one of the following keywords on a new line:
+- If the code has NO errors and is perfect, output: <PASS>
+- If the code HAS errors that need the developer to fix, output: <REJECT>`,
     suggestedSkills: ['code-review', 'audit'],
   },
   {

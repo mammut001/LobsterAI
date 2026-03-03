@@ -240,13 +240,31 @@ const AgentNode: React.FC<NodeProps & { data: AgentNodeData }> = memo(({ data, s
 
                 {/* Keyword input (only for outputContains) */}
                 {route.condition === 'outputContains' && (
-                  <input
-                    type="text"
-                    value={route.keyword || ''}
-                    placeholder={i18nService.t('workflow.keyword') || '关键词'}
-                    onChange={(e) => onUpdateRoute(agent.id, route.id, { keyword: e.target.value })}
-                    className="nodrag w-16 px-1 py-0.5 text-xs bg-transparent border rounded dark:text-claude-darkText text-claude-text dark:border-claude-darkBorder border-claude-border focus:outline-none focus:border-claude-accent"
-                  />
+                  <div className="flex flex-col gap-1 items-center">
+                    <input
+                      type="text"
+                      value={route.keyword || ''}
+                      placeholder={i18nService.t('workflow.keyword') || '关键词'}
+                      onChange={(e) => onUpdateRoute(agent.id, route.id, { keyword: e.target.value })}
+                      className="nodrag w-16 px-1 py-0.5 text-xs bg-transparent border rounded dark:text-claude-darkText text-claude-text dark:border-claude-darkBorder border-claude-border focus:outline-none focus:border-claude-accent"
+                    />
+                    <div className="flex gap-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onUpdateRoute(agent.id, route.id, { keyword: 'PASS' }) }}
+                        className="nodrag text-[9px] px-1 py-0.5 bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20 rounded transition-colors font-medium border border-green-500/20"
+                        title="Quick set to PASS"
+                      >
+                        PASS
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onUpdateRoute(agent.id, route.id, { keyword: 'REJECT' }) }}
+                        className="nodrag text-[9px] px-1 py-0.5 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 rounded transition-colors font-medium border border-red-500/20"
+                        title="Quick set to REJECT"
+                      >
+                        REJECT
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {/* Arrow */}

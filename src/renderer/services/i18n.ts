@@ -817,6 +817,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     workflowLogSkipped: '跳过',
     workflowLogWaiting: '等待工作流启动...',
     workflowLogEmpty: '暂无日志。运行工作流后将显示执行日志。',
+    workflowNoRuns: '暂无工作流记录',
+    workflowNoRunsHint: '运行一次工作流即可在此查看历史',
     // Skills - Chinese translations
     'skill.code-writing': '代码编写',
     'skill.code-review': '代码审查',
@@ -1687,6 +1689,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     workflowLogSkipped: 'Skipped',
     workflowLogWaiting: 'Waiting for workflow to start...',
     workflowLogEmpty: 'No logs yet. Run a workflow to see execution logs.',
+    workflowNoRuns: 'No workflow runs yet',
+    workflowNoRunsHint: 'Run a workflow to see history here',
     // Skills - English translations
     'skill.code-writing': 'Code Writing',
     'skill.code-review': 'Code Review',

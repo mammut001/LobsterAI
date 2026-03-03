@@ -1276,6 +1276,9 @@ if (!gotTheLock) {
     } catch (error) {
       console.error('[workflow:copyToProject] Error:', error);
       return { success: false, error: String(error) };
+    }
+  });
+
   // MCP Server IPC handlers
   ipcMain.handle('mcp:list', () => {
     try {

@@ -113,7 +113,7 @@ const WorkflowOutputPanel: React.FC<WorkflowOutputPanelProps> = ({
     if (!collapsed && activeTab === 'files' && workingDirectory) {
       fetchFiles();
     }
-  }, [workingDirectory]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [workingDirectory]);
 
   // Auto-refresh files when running
   useEffect(() => {
@@ -128,7 +128,7 @@ const WorkflowOutputPanel: React.FC<WorkflowOutputPanelProps> = ({
     if (!isRunning && workingDirectory) {
       fetchFiles();
     }
-  }, [isRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isRunning]);
 
   // Fetch content when file is selected
   useEffect(() => {

@@ -108,7 +108,10 @@
     "node_modules/@anthropic-ai/claude-agent-sdk/**",
     "node_modules/@img/**",
     "node_modules/sql.js/dist/**",
-    "node_modules/node-nim/**"
+    "node_modules/node-nim/**",
+    "node_modules/npm/**",
+    "node_modules/.bin/npx",
+    "node_modules/.bin/npm"
   ],
   "asar": true
 }

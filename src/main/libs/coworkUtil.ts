@@ -330,18 +330,13 @@ function getWindowsGitToolDirs(bashPath: string): string[] {
   return candidates.filter((dir) => existsSync(dir));
 }
 
-function ensureWindowsElectronNodeShim(electronPath: string): string | null {
-  if (process.platform !== 'win32') {
-    return null;
-  }
-
+function ensureElectronNodeShim(electronPath: string): string | null {
   try {
     const shimDir = join(app.getPath('userData'), 'cowork', 'bin');
     mkdirSync(shimDir, { recursive: true });
 
+    // Shell script (macOS/Linux/Windows git-bash)
     const nodeSh = join(shimDir, 'node');
-    const nodeCmd = join(shimDir, 'node.cmd');
-
     const nodeShContent = [
       '#!/usr/bin/env bash',
       'if [ -z "${LOBSTERAI_ELECTRON_PATH:-}" ]; then',
@@ -352,23 +347,27 @@ function ensureWindowsElectronNodeShim(electronPath: string): string | null {
       '',
     ].join('\n');
 
-    const nodeCmdContent = [
-      '@echo off',
-      'if "%LOBSTERAI_ELECTRON_PATH%"=="" (',
-      '  echo LOBSTERAI_ELECTRON_PATH is not set 1>&2',
-      '  exit /b 127',
-      ')',
-      'set ELECTRON_RUN_AS_NODE=1',
-      '"%LOBSTERAI_ELECTRON_PATH%" %*',
-      '',
-    ].join('\r\n');
-
     writeFileSync(nodeSh, nodeShContent, 'utf8');
-    writeFileSync(nodeCmd, nodeCmdContent, 'utf8');
     try {
       chmodSync(nodeSh, 0o755);
     } catch {
-      // Ignore chmod errors on Windows file systems that do not support POSIX modes.
+      // Ignore chmod errors on file systems that do not support POSIX modes.
+    }
+
+    // Windows .cmd wrapper (only needed on Windows)
+    if (process.platform === 'win32') {
+      const nodeCmd = join(shimDir, 'node.cmd');
+      const nodeCmdContent = [
+        '@echo off',
+        'if "%LOBSTERAI_ELECTRON_PATH%"=="" (',
+        '  echo LOBSTERAI_ELECTRON_PATH is not set 1>&2',
+        '  exit /b 127',
+        ')',
+        'set ELECTRON_RUN_AS_NODE=1',
+        '"%LOBSTERAI_ELECTRON_PATH%" %*',
+        '',
+      ].join('\r\n');
+      writeFileSync(nodeCmd, nodeCmdContent, 'utf8');
     }
 
     return shimDir;
@@ -858,12 +857,6 @@ function applyPackagedEnvOverrides(env: Record<string, string | undefined>): voi
 
     appendPythonRuntimeToEnv(env);
 
-    const shimDir = ensureWindowsElectronNodeShim(process.execPath);
-    if (shimDir) {
-      env.PATH = appendEnvPath(env.PATH, [shimDir]);
-      coworkLog('INFO', 'resolveNodeShim', `Injected Electron Node shim PATH entry: ${shimDir}`);
-    }
-
     // Tell git-bash to inherit the PATH from the parent process instead of
     // rebuilding it from scratch. Without this, git-bash's /etc/profile (login
     // shell) defaults to constructing a minimal PATH containing only Windows
@@ -891,6 +884,12 @@ function applyPackagedEnvOverrides(env: Record<string, string | undefined>): voi
   }
 
   if (!app.isPackaged) {
+    // In dev mode, prepend project's node_modules/.bin to PATH so bundled
+    // npx/npm are found even if the user has no global Node.js installation.
+    const devBinDir = join(app.getAppPath(), 'node_modules', '.bin');
+    if (existsSync(devBinDir)) {
+      env.PATH = [devBinDir, env.PATH].filter(Boolean).join(delimiter);
+    }
     return;
   }
 
@@ -916,6 +915,24 @@ function applyPackagedEnvOverrides(env: Record<string, string | undefined>): voi
   }
 
   const resourcesPath = process.resourcesPath;
+
+  // Prepend bundled node_modules/.bin to PATH so that npx/npm from the
+  // packaged npm dependency are found even if the user has no global
+  // Node.js installation. This ensures MCP servers using npx always work.
+  const unpackedBinDir = join(resourcesPath, 'app.asar.unpacked', 'node_modules', '.bin');
+  if (existsSync(unpackedBinDir)) {
+    env.PATH = [unpackedBinDir, env.PATH].filter(Boolean).join(delimiter);
+  }
+
+  // Create a `node` shim that wraps Electron as a Node.js runtime via
+  // ELECTRON_RUN_AS_NODE=1. This is needed so that npx (whose shebang is
+  // #!/usr/bin/env node) can work even when the user has no system Node.js.
+  const shimDir = ensureElectronNodeShim(process.execPath);
+  if (shimDir) {
+    env.PATH = appendEnvPath(env.PATH, [shimDir]);
+    coworkLog('INFO', 'resolveNodeShim', `Injected Electron Node shim PATH entry: ${shimDir}`);
+  }
+
   const nodePaths = [
     join(resourcesPath, 'app.asar', 'node_modules'),
     join(resourcesPath, 'app.asar.unpacked', 'node_modules'),

@@ -37,6 +37,7 @@ import {
   YouDaoZhiYunIcon,
   QwenIcon,
   XiaomiIcon,
+  StepfunIcon,
   VolcengineIcon,
   OpenRouterIcon,
   OllamaIcon,
@@ -66,6 +67,7 @@ const providerKeys = [
   'youdaozhiyun',
   'qwen',
   'xiaomi',
+  'stepfun',
   'volcengine',
   'openrouter',
   'ollama',
@@ -136,6 +138,7 @@ const providerMeta: Record<ProviderType, { label: string; icon: React.ReactNode 
   youdaozhiyun: { label: '有道智云', icon: <YouDaoZhiYunIcon /> },
   qwen: { label: 'Qwen', icon: <QwenIcon /> },
   xiaomi: { label: 'Xiaomi', icon: <XiaomiIcon /> },
+  stepfun: { label: 'StepFun', icon: <StepfunIcon /> },
   volcengine: { label: 'Volcengine', icon: <VolcengineIcon /> },
   openrouter: { label: 'OpenRouter', icon: <OpenRouterIcon /> },
   ollama: { label: 'Ollama', icon: <OllamaIcon /> },
@@ -229,7 +232,7 @@ const copyTextToClipboard = async (text: string): Promise<boolean> => {
 };
 
 const getFixedApiFormatForProvider = (provider: string): 'anthropic' | 'openai' | null => {
-  if (provider === 'openai' || provider === 'gemini') {
+  if (provider === 'openai' || provider === 'gemini' || provider === 'stepfun') {
     return 'openai';
   }
   if (provider === 'youdaozhiyun') {
@@ -668,6 +671,17 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
             ...prev,
             qwen: {
               ...prev.qwen,
+              enabled: true,
+              apiKey: config.api.key,
+              baseUrl: config.api.baseUrl
+            }
+          }));
+        } else if (normalizedApiBaseUrl.includes('stepfun')) {
+          setActiveProvider('stepfun');
+          setProviders(prev => ({
+            ...prev,
+            stepfun: {
+              ...prev.stepfun,
               enabled: true,
               apiKey: config.api.key,
               baseUrl: config.api.baseUrl

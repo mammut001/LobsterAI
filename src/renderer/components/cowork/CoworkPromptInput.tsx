@@ -193,7 +193,10 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
 
   useEffect(() => {
     if (value !== draftPrompt) {
-      dispatch(setDraftPrompt(value));
+      const timer = setTimeout(() => {
+        dispatch(setDraftPrompt(value));
+      }, 300);
+      return () => clearTimeout(timer);
     }
   }, [value, draftPrompt, dispatch]);
 

@@ -5,9 +5,11 @@ import { coworkService } from '../services/cowork';
 import { i18nService } from '../services/i18n';
 import CoworkSessionList from './cowork/CoworkSessionList';
 import CoworkSearchModal from './cowork/CoworkSearchModal';
-import { MagnifyingGlassIcon, PuzzlePieceIcon, ClockIcon } from '@heroicons/react/24/outline';
 import ComposeIcon from './icons/ComposeIcon';
 import ConnectorIcon from './icons/ConnectorIcon';
+import SearchIcon from './icons/SearchIcon';
+import ClockIcon from './icons/ClockIcon';
+import PuzzleIcon from './icons/PuzzleIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
 
 interface SidebarProps {
@@ -115,7 +117,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             }}
             className="w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
           >
-            <MagnifyingGlassIcon className="h-4 w-4" />
+            <SearchIcon className="h-4 w-4" />
             {i18nService.t('search')}
           </button>
           <button
@@ -145,7 +147,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
             }`}
           >
-            <PuzzlePieceIcon className="h-4 w-4" />
+            <PuzzleIcon className="h-4 w-4" />
             {i18nService.t('skills')}
           </button>
           <button

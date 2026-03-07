@@ -9,10 +9,7 @@ import MarkdownContent from '../MarkdownContent';
 import {
   CheckIcon,
   InformationCircleIcon,
-  EllipsisHorizontalIcon,
-  PencilSquareIcon,
   ShareIcon,
-  TrashIcon,
   ExclamationTriangleIcon,
   ChevronRightIcon,
   PhotoIcon,
@@ -22,6 +19,9 @@ import { coworkService } from '../../services/cowork';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import PuzzleIcon from '../icons/PuzzleIcon';
+import EllipsisHorizontalIcon from '../icons/EllipsisHorizontalIcon';
+import PencilSquareIcon from '../icons/PencilSquareIcon';
+import TrashIcon from '../icons/TrashIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import { getCompactFolderName } from '../../utils/path';
 

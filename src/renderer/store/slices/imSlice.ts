@@ -13,6 +13,7 @@ import type {
   DiscordConfig,
   NimConfig,
   XiaomifengConfig,
+  WecomConfig,
   IMSettings,
 } from '../../types/im';
 import {
@@ -59,6 +60,9 @@ const imSlice = createSlice({
     setXiaomifengConfig: (state, action: PayloadAction<Partial<XiaomifengConfig>>) => {
       state.config.xiaomifeng = { ...state.config.xiaomifeng, ...action.payload };
     },
+    setWecomConfig: (state, action: PayloadAction<Partial<WecomConfig>>) => {
+      state.config.wecom = { ...state.config.wecom, ...action.payload };
+    },
     setIMSettings: (state, action: PayloadAction<Partial<IMSettings>>) => {
       state.config.settings = { ...state.config.settings, ...action.payload };
     },
@@ -85,6 +89,7 @@ export const {
   setDiscordConfig,
   setNimConfig,
   setXiaomifengConfig,
+  setWecomConfig,
   setIMSettings,
   setStatus,
   setLoading,

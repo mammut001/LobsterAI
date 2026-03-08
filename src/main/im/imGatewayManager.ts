@@ -14,6 +14,7 @@ import { DiscordGateway } from './discordGateway';
 import { NimGateway } from './nimGateway';
 import { XiaomifengGateway } from './xiaomifengGateway';
 import { QQGateway } from './qqGateway';
+import { WecomGateway } from './wecomGateway';
 import { IMChatHandler } from './imChatHandler';
 import { IMCoworkHandler } from './imCoworkHandler';
 import { IMStore } from './imStore';
@@ -60,6 +61,7 @@ export class IMGatewayManager extends EventEmitter {
   private nimGateway: NimGateway;
   private xiaomifengGateway: XiaomifengGateway;
   private qqGateway: QQGateway;
+  private wecomGateway: WecomGateway;
   private imStore: IMStore;
   private chatHandler: IMChatHandler | null = null;
   private coworkHandler: IMCoworkHandler | null = null;
@@ -84,6 +86,7 @@ export class IMGatewayManager extends EventEmitter {
     this.nimGateway = new NimGateway();
     this.xiaomifengGateway = new XiaomifengGateway();
     this.qqGateway = new QQGateway();
+    this.wecomGateway = new WecomGateway();
 
     // Store Cowork dependencies if provided
     if (options?.coworkRunner && options?.coworkStore) {
@@ -212,6 +215,24 @@ export class IMGatewayManager extends EventEmitter {
     this.qqGateway.on('message', (message: IMMessage) => {
       this.emit('message', message);
     });
+
+    // WeCom events
+    this.wecomGateway.on('status', () => {
+      this.emit('statusChange', this.getStatus());
+    });
+    this.wecomGateway.on('connected', () => {
+      this.emit('statusChange', this.getStatus());
+    });
+    this.wecomGateway.on('disconnected', () => {
+      this.emit('statusChange', this.getStatus());
+    });
+    this.wecomGateway.on('error', (error) => {
+      this.emit('error', { platform: 'wecom', error });
+      this.emit('statusChange', this.getStatus());
+    });
+    this.wecomGateway.on('message', (message: IMMessage) => {
+      this.emit('message', message);
+    });
   }
 
   /**
@@ -254,6 +275,11 @@ export class IMGatewayManager extends EventEmitter {
     if (this.qqGateway && !this.qqGateway.isConnected()) {
       console.log('[IMGatewayManager] Reconnecting QQ...');
       this.qqGateway.reconnectIfNeeded();
+    }
+
+    if (this.wecomGateway && !this.wecomGateway.isConnected()) {
+      console.log('[IMGatewayManager] Reconnecting WeCom...');
+      this.wecomGateway.reconnectIfNeeded();
     }
   }
 
@@ -325,6 +351,7 @@ export class IMGatewayManager extends EventEmitter {
     this.nimGateway.setMessageCallback(messageHandler);
     this.xiaomifengGateway.setMessageCallback(messageHandler);
     this.qqGateway.setMessageCallback(messageHandler);
+    this.wecomGateway.setMessageCallback(messageHandler);
   }
 
   /**
@@ -345,6 +372,8 @@ export class IMGatewayManager extends EventEmitter {
         target = this.nimGateway.getNotificationTarget();
       } else if (platform === 'qq') {
         target = this.qqGateway.getNotificationTarget();
+      } else if (platform === 'wecom') {
+        target = this.wecomGateway.getNotificationTarget();
       }
       if (target != null) {
         this.imStore.setNotificationTarget(platform, target);
@@ -374,6 +403,8 @@ export class IMGatewayManager extends EventEmitter {
         this.nimGateway.setNotificationTarget(target);
       } else if (platform === 'qq') {
         this.qqGateway.setNotificationTarget(target);
+      } else if (platform === 'wecom') {
+        this.wecomGateway.setNotificationTarget(target);
       }
       console.log(`[IMGatewayManager] Restored notification target for ${platform}`);
     } catch (err: any) {
@@ -550,6 +581,22 @@ export class IMGatewayManager extends EventEmitter {
         });
       }
     }
+
+    // Hot-update WeCom config: restart if credential fields changed
+    if (config.wecom && this.wecomGateway) {
+      const oldWc = previousConfig.wecom;
+      const newWc = { ...oldWc, ...config.wecom };
+      const credentialsChanged =
+        newWc.botId !== oldWc.botId ||
+        newWc.secret !== oldWc.secret;
+
+      if (credentialsChanged && this.wecomGateway.isConnected()) {
+        console.log('[IMGatewayManager] WeCom credentials changed, restarting gateway...');
+        this.restartGateway('wecom').catch((err) => {
+          console.error('[IMGatewayManager] Failed to restart WeCom after config change:', err.message);
+        });
+      }
+    }
   }
 
   /**
@@ -577,6 +624,7 @@ export class IMGatewayManager extends EventEmitter {
       discord: this.discordGateway.getStatus(),
       nim: this.nimGateway.getStatus(),
       xiaomifeng: this.xiaomifengGateway.getStatus(),
+      wecom: this.wecomGateway.getStatus(),
     };
   }
 
@@ -773,6 +821,13 @@ export class IMGatewayManager extends EventEmitter {
         message: 'QQ 频道中需要 @机器人 才能触发消息响应，也支持私信对话。',
         suggestion: '请在频道中使用 @机器人 + 内容触发对话，或通过私信直接发送消息。',
       });
+    } else if (platform === 'wecom') {
+      addCheck({
+        code: 'nim_p2p_only_hint',
+        level: 'info',
+        message: '企业微信机器人通过 WebSocket 长连接接收消息。',
+        suggestion: '请在企业微信中向机器人发送消息触发对话。群聊中需 @机器人。',
+      });
     }
 
     return {
@@ -808,6 +863,8 @@ export class IMGatewayManager extends EventEmitter {
       await this.xiaomifengGateway.start(config.xiaomifeng);
     } else if (platform === 'qq') {
       await this.qqGateway.start(config.qq);
+    } else if (platform === 'wecom') {
+      await this.wecomGateway.start(config.wecom);
     }
 
     // Restore persisted notification target
@@ -832,6 +889,8 @@ export class IMGatewayManager extends EventEmitter {
       await this.xiaomifengGateway.stop();
     } else if (platform === 'qq') {
       await this.qqGateway.stop();
+    } else if (platform === 'wecom') {
+      await this.wecomGateway.stop();
     }
   }
 
@@ -896,6 +955,14 @@ export class IMGatewayManager extends EventEmitter {
         console.error(`[IMGatewayManager] Failed to start QQ: ${error.message}`);
       }
     }
+
+    if (config.wecom?.enabled && config.wecom?.botId && config.wecom?.secret) {
+      try {
+        await this.startGateway('wecom');
+      } catch (error: any) {
+        console.error(`[IMGatewayManager] Failed to start WeCom: ${error.message}`);
+      }
+    }
   }
 
   /**
@@ -910,6 +977,7 @@ export class IMGatewayManager extends EventEmitter {
       this.nimGateway.stop(),
       this.xiaomifengGateway.stop(),
       this.qqGateway.stop(),
+      this.wecomGateway.stop(),
     ]);
   }
 
@@ -917,7 +985,7 @@ export class IMGatewayManager extends EventEmitter {
    * Check if any gateway is connected
    */
   isAnyConnected(): boolean {
-    return this.dingtalkGateway.isConnected() || this.feishuGateway.isConnected() || this.telegramGateway.isConnected() || this.discordGateway.isConnected() || this.nimGateway.isConnected() || this.xiaomifengGateway.isConnected() || this.qqGateway.isConnected();
+    return this.dingtalkGateway.isConnected() || this.feishuGateway.isConnected() || this.telegramGateway.isConnected() || this.discordGateway.isConnected() || this.nimGateway.isConnected() || this.xiaomifengGateway.isConnected() || this.qqGateway.isConnected() || this.wecomGateway.isConnected();
   }
 
   /**
@@ -941,6 +1009,9 @@ export class IMGatewayManager extends EventEmitter {
     }
     if (platform === 'qq') {
       return this.qqGateway.isConnected();
+    }
+    if (platform === 'wecom') {
+      return this.wecomGateway.isConnected();
     }
     return this.feishuGateway.isConnected();
   }
@@ -969,6 +1040,10 @@ export class IMGatewayManager extends EventEmitter {
         await this.nimGateway.sendNotification(text);
       } else if (platform === 'qq') {
         await this.qqGateway.sendNotification(text);
+      } else if (platform === 'wecom') {
+        await this.wecomGateway.sendNotification(text);
+      } else if (platform === 'xiaomifeng') {
+        await this.xiaomifengGateway.sendNotification(text);
       }
       return true;
     } catch (error: any) {
@@ -996,6 +1071,10 @@ export class IMGatewayManager extends EventEmitter {
         await this.nimGateway.sendNotificationWithMedia(text);
       } else if (platform === 'qq') {
         await this.qqGateway.sendNotificationWithMedia(text);
+      } else if (platform === 'wecom') {
+        await this.wecomGateway.sendNotificationWithMedia(text);
+      } else if (platform === 'xiaomifeng') {
+        await this.xiaomifengGateway.sendNotificationWithMedia(text);
       }
       return true;
     } catch (error: any) {
@@ -1019,6 +1098,7 @@ export class IMGatewayManager extends EventEmitter {
       discord: { ...current.discord, ...(configOverride.discord || {}) },
       nim: { ...current.nim, ...(configOverride.nim || {}) },
       xiaomifeng: { ...current.xiaomifeng, ...(configOverride.xiaomifeng || {}) },
+      wecom: { ...current.wecom, ...(configOverride.wecom || {}) },
       settings: { ...current.settings, ...(configOverride.settings || {}) },
     };
   }
@@ -1056,6 +1136,12 @@ export class IMGatewayManager extends EventEmitter {
       const fields: string[] = [];
       if (!config.qq?.appId) fields.push('appId');
       if (!config.qq?.appSecret) fields.push('appSecret');
+      return fields;
+    }
+    if (platform === 'wecom') {
+      const fields: string[] = [];
+      if (!config.wecom?.botId) fields.push('botId');
+      if (!config.wecom?.secret) fields.push('secret');
       return fields;
     }
     return config.discord.botToken ? [] : ['botToken'];
@@ -1115,6 +1201,35 @@ export class IMGatewayManager extends EventEmitter {
         throw new Error('配置不完整');
       }
       return `小蜜蜂配置已就绪（Client ID: ${clientId}）。`;
+    }
+
+    if (platform === 'wecom') {
+      const { botId, secret } = config.wecom;
+      if (!botId || !secret) {
+        throw new Error('配置不完整');
+      }
+      // Create a temporary WSClient to verify authentication
+      const { WSClient } = await import('@wecom/aibot-node-sdk');
+      const tmpClient = new WSClient({ botId, secret, maxReconnectAttempts: 0 });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            reject(new Error('企业微信鉴权超时（10s）'));
+          }, CONNECTIVITY_TIMEOUT_MS);
+          tmpClient.on('authenticated', () => {
+            clearTimeout(timer);
+            resolve();
+          });
+          tmpClient.on('error', (err: Error) => {
+            clearTimeout(timer);
+            reject(err);
+          });
+          tmpClient.connect();
+        });
+        return `企业微信鉴权通过（Bot ID: ${botId}）。`;
+      } finally {
+        try { tmpClient.disconnect(); } catch (_) { /* ignore */ }
+      }
     }
 
     if (platform === 'discord') {
@@ -1305,6 +1420,7 @@ export class IMGatewayManager extends EventEmitter {
     if (platform === 'nim') return status.nim.startedAt;
     if (platform === 'xiaomifeng') return status.xiaomifeng.startedAt;
     if (platform === 'qq') return status.qq.startedAt;
+    if (platform === 'wecom') return status.wecom.startedAt;
     return status.discord.startedAt;
   }
 
@@ -1315,6 +1431,7 @@ export class IMGatewayManager extends EventEmitter {
     if (platform === 'nim') return status.nim.lastInboundAt;
     if (platform === 'xiaomifeng') return status.xiaomifeng.lastInboundAt;
     if (platform === 'qq') return status.qq.lastInboundAt;
+    if (platform === 'wecom') return status.wecom.lastInboundAt;
     return status.discord.lastInboundAt;
   }
 
@@ -1325,6 +1442,7 @@ export class IMGatewayManager extends EventEmitter {
     if (platform === 'nim') return status.nim.lastOutboundAt;
     if (platform === 'xiaomifeng') return status.xiaomifeng.lastOutboundAt;
     if (platform === 'qq') return status.qq.lastOutboundAt;
+    if (platform === 'wecom') return status.wecom.lastOutboundAt;
     return status.discord.lastOutboundAt;
   }
 
@@ -1335,6 +1453,7 @@ export class IMGatewayManager extends EventEmitter {
     if (platform === 'nim') return status.nim.lastError;
     if (platform === 'xiaomifeng') return status.xiaomifeng.lastError;
     if (platform === 'qq') return status.qq.lastError;
+    if (platform === 'wecom') return status.wecom.lastError;
     return status.discord.lastError;
   }
 

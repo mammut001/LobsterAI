@@ -129,9 +129,27 @@ export interface XiaomifengGatewayStatus {
   lastOutboundAt: number | null;
 }
 
+// ==================== WeCom (企业微信) Types ====================
+
+export interface WecomConfig {
+  enabled: boolean;
+  botId: string;
+  secret: string;
+  debug?: boolean;
+}
+
+export interface WecomGatewayStatus {
+  connected: boolean;
+  startedAt: number | null;
+  lastError: string | null;
+  botId: string | null;
+  lastInboundAt: number | null;
+  lastOutboundAt: number | null;
+}
+
 // ==================== Common IM Types ====================
 
-export type IMPlatform = 'dingtalk' | 'feishu' | 'telegram' | 'discord' | 'nim' | 'xiaomifeng';
+export type IMPlatform = 'dingtalk' | 'feishu' | 'telegram' | 'discord' | 'nim' | 'xiaomifeng' | 'wecom';
 
 export interface IMGatewayConfig {
   dingtalk: DingTalkConfig;
@@ -140,6 +158,7 @@ export interface IMGatewayConfig {
   discord: DiscordConfig;
   nim: NimConfig;
   xiaomifeng: XiaomifengConfig;
+  wecom: WecomConfig;
   settings: IMSettings;
 }
 
@@ -155,6 +174,7 @@ export interface IMGatewayStatus {
   discord: DiscordGatewayStatus;
   nim: NimGatewayStatus;
   xiaomifeng: XiaomifengGatewayStatus;
+  wecom: WecomGatewayStatus;
 }
 
 // ==================== Media Attachment Types ====================
@@ -292,6 +312,13 @@ export const DEFAULT_XIAOMIFENG_CONFIG: XiaomifengConfig = {
   debug: true,
 };
 
+export const DEFAULT_WECOM_CONFIG: WecomConfig = {
+  enabled: false,
+  botId: '',
+  secret: '',
+  debug: true,
+};
+
 export const DEFAULT_IM_SETTINGS: IMSettings = {
   systemPrompt: '',
   skillsEnabled: true,
@@ -304,6 +331,7 @@ export const DEFAULT_IM_CONFIG: IMGatewayConfig = {
   discord: DEFAULT_DISCORD_CONFIG,
   nim: DEFAULT_NIM_CONFIG,
   xiaomifeng: DEFAULT_XIAOMIFENG_CONFIG,
+  wecom: DEFAULT_WECOM_CONFIG,
   settings: DEFAULT_IM_SETTINGS,
 };
 
@@ -353,6 +381,14 @@ export const DEFAULT_IM_STATUS: IMGatewayStatus = {
     startedAt: null,
     lastError: null,
     botAccount: null,
+    lastInboundAt: null,
+    lastOutboundAt: null,
+  },
+  wecom: {
+    connected: false,
+    startedAt: null,
+    lastError: null,
+    botId: null,
     lastInboundAt: null,
     lastOutboundAt: null,
   },

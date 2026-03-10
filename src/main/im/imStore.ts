@@ -10,7 +10,7 @@ import {
   FeishuConfig,
   TelegramOpenClawConfig,
   QQConfig,
-  DiscordConfig,
+  DiscordOpenClawConfig,
   NimConfig,
   XiaomifengConfig,
   WecomConfig,
@@ -21,7 +21,7 @@ import {
   DEFAULT_FEISHU_CONFIG,
   DEFAULT_TELEGRAM_OPENCLAW_CONFIG,
   DEFAULT_QQ_CONFIG,
-  DEFAULT_DISCORD_CONFIG,
+  DEFAULT_DISCORD_OPENCLAW_CONFIG,
   DEFAULT_NIM_CONFIG,
   DEFAULT_XIAOMIFENG_CONFIG,
   DEFAULT_WECOM_CONFIG,
@@ -164,6 +164,37 @@ export class IMStore {
       }
     }
 
+    // Migrate old native Discord config to new OpenClaw format
+    const oldDiscordResult = this.db.exec('SELECT value FROM im_config WHERE key = ?', ['discord']);
+    const newDiscordResult = this.db.exec('SELECT value FROM im_config WHERE key = ?', ['discordOpenClaw']);
+    if (oldDiscordResult[0]?.values[0] && !newDiscordResult[0]?.values[0]) {
+      try {
+        const oldConfig = JSON.parse(oldDiscordResult[0].values[0][0] as string) as {
+          enabled?: boolean;
+          botToken?: string;
+          debug?: boolean;
+        };
+        if (oldConfig.botToken) {
+          const newConfig = {
+            ...DEFAULT_DISCORD_OPENCLAW_CONFIG,
+            enabled: oldConfig.enabled ?? false,
+            botToken: oldConfig.botToken,
+            debug: oldConfig.debug ?? true,
+          };
+          const now = Date.now();
+          this.db.run(
+            'INSERT OR REPLACE INTO im_config (key, value, updated_at) VALUES (?, ?, ?)',
+            ['discordOpenClaw', JSON.stringify(newConfig), now]
+          );
+          this.db.run('DELETE FROM im_config WHERE key = ?', ['discord']);
+          changed = true;
+          console.log('[IMStore] Migrated old Discord config to OpenClaw format');
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+
     if (changed) {
       this.saveDb();
     }
@@ -201,7 +232,7 @@ export class IMStore {
     const dingtalk = this.getConfigValue<DingTalkConfig>('dingtalk') ?? DEFAULT_DINGTALK_CONFIG;
     const feishu = this.getConfigValue<FeishuConfig>('feishu') ?? DEFAULT_FEISHU_CONFIG;
     const telegram = this.getConfigValue<TelegramOpenClawConfig>('telegramOpenClaw') ?? DEFAULT_TELEGRAM_OPENCLAW_CONFIG;
-    const discord = this.getConfigValue<DiscordConfig>('discord') ?? DEFAULT_DISCORD_CONFIG;
+    const discord = this.getConfigValue<DiscordOpenClawConfig>('discordOpenClaw') ?? DEFAULT_DISCORD_OPENCLAW_CONFIG;
     const nim = this.getConfigValue<NimConfig>('nim') ?? DEFAULT_NIM_CONFIG;
     const xiaomifeng = this.getConfigValue<XiaomifengConfig>('xiaomifeng') ?? DEFAULT_XIAOMIFENG_CONFIG;
     const qq = this.getConfigValue<QQConfig>('qq') ?? DEFAULT_QQ_CONFIG;
@@ -223,7 +254,7 @@ export class IMStore {
       dingtalk: resolveEnabled(dingtalk, DEFAULT_DINGTALK_CONFIG),
       feishu: resolveEnabled(feishu, DEFAULT_FEISHU_CONFIG),
       telegram: resolveEnabled(telegram, DEFAULT_TELEGRAM_OPENCLAW_CONFIG),
-      discord: resolveEnabled(discord, DEFAULT_DISCORD_CONFIG),
+      discord: resolveEnabled(discord, DEFAULT_DISCORD_OPENCLAW_CONFIG),
       nim: resolveEnabled(nim, DEFAULT_NIM_CONFIG),
       xiaomifeng: resolveEnabled(xiaomifeng, DEFAULT_XIAOMIFENG_CONFIG),
       qq: resolveEnabled(qq, DEFAULT_QQ_CONFIG),
@@ -243,7 +274,7 @@ export class IMStore {
       this.setTelegramOpenClawConfig(config.telegram);
     }
     if (config.discord) {
-      this.setDiscordConfig(config.discord);
+      this.setDiscordOpenClawConfig(config.discord);
     }
     if (config.nim) {
       this.setNimConfig(config.nim);
@@ -286,16 +317,16 @@ export class IMStore {
     this.setConfigValue('feishu', { ...current, ...config });
   }
 
-  // ==================== Discord Config ====================
+  // ==================== Discord OpenClaw Config ====================
 
-  getDiscordConfig(): DiscordConfig {
-    const stored = this.getConfigValue<DiscordConfig>('discord');
-    return { ...DEFAULT_DISCORD_CONFIG, ...stored };
+  getDiscordOpenClawConfig(): DiscordOpenClawConfig {
+    const stored = this.getConfigValue<DiscordOpenClawConfig>('discordOpenClaw');
+    return { ...DEFAULT_DISCORD_OPENCLAW_CONFIG, ...stored };
   }
 
-  setDiscordConfig(config: Partial<DiscordConfig>): void {
-    const current = this.getDiscordConfig();
-    this.setConfigValue('discord', { ...current, ...config });
+  setDiscordOpenClawConfig(config: Partial<DiscordOpenClawConfig>): void {
+    const current = this.getDiscordOpenClawConfig();
+    this.setConfigValue('discordOpenClaw', { ...current, ...config });
   }
 
   // ==================== NIM Config ====================

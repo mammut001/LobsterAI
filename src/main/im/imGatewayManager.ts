@@ -1,7 +1,7 @@
 /**
  * IM Gateway Manager
- * Unified manager for DingTalk, Feishu, Discord, NIM, Xiaomifeng gateways
- * and Telegram via OpenClaw
+ * Unified manager for DingTalk, Feishu, NIM, Xiaomifeng gateways
+ * and Telegram, Discord via OpenClaw
  */
 
 import { EventEmitter } from 'events';
@@ -10,7 +10,6 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { DingTalkGateway } from './dingtalkGateway';
 import { FeishuGateway } from './feishuGateway';
-import { DiscordGateway } from './discordGateway';
 import { NimGateway } from './nimGateway';
 import { XiaomifengGateway } from './xiaomifengGateway';
 import { QQGateway } from './qqGateway';
@@ -60,7 +59,6 @@ export interface IMGatewayManagerOptions {
 export class IMGatewayManager extends EventEmitter {
   private dingtalkGateway: DingTalkGateway;
   private feishuGateway: FeishuGateway;
-  private discordGateway: DiscordGateway;
   private nimGateway: NimGateway;
   private xiaomifengGateway: XiaomifengGateway;
   private qqGateway: QQGateway;
@@ -88,7 +86,6 @@ export class IMGatewayManager extends EventEmitter {
     this.imStore = new IMStore(db, saveDb);
     this.dingtalkGateway = new DingTalkGateway();
     this.feishuGateway = new FeishuGateway();
-    this.discordGateway = new DiscordGateway();
     this.nimGateway = new NimGateway();
     this.xiaomifengGateway = new XiaomifengGateway();
     this.qqGateway = new QQGateway();
@@ -139,24 +136,6 @@ export class IMGatewayManager extends EventEmitter {
       this.emit('statusChange', this.getStatus());
     });
     this.feishuGateway.on('message', (message: IMMessage) => {
-      this.emit('message', message);
-    });
-
-    // Discord events
-    this.discordGateway.on('status', () => {
-      this.emit('statusChange', this.getStatus());
-    });
-    this.discordGateway.on('connected', () => {
-      this.emit('statusChange', this.getStatus());
-    });
-    this.discordGateway.on('disconnected', () => {
-      this.emit('statusChange', this.getStatus());
-    });
-    this.discordGateway.on('error', (error) => {
-      this.emit('error', { platform: 'discord', error });
-      this.emit('statusChange', this.getStatus());
-    });
-    this.discordGateway.on('message', (message: IMMessage) => {
       this.emit('message', message);
     });
 
@@ -247,11 +226,6 @@ export class IMGatewayManager extends EventEmitter {
       this.feishuGateway.reconnectIfNeeded();
     }
 
-    if (this.discordGateway && !this.discordGateway.isConnected()) {
-      console.log('[IMGatewayManager] Reconnecting Discord...');
-      this.discordGateway.reconnectIfNeeded();
-    }
-
     if (this.nimGateway && !this.nimGateway.isConnected()) {
       console.log('[IMGatewayManager] Reconnecting NIM...');
       this.nimGateway.reconnectIfNeeded();
@@ -339,7 +313,6 @@ export class IMGatewayManager extends EventEmitter {
 
     this.dingtalkGateway.setMessageCallback(messageHandler);
     this.feishuGateway.setMessageCallback(messageHandler);
-    this.discordGateway.setMessageCallback(messageHandler);
     this.nimGateway.setMessageCallback(messageHandler);
     this.xiaomifengGateway.setMessageCallback(messageHandler);
     this.qqGateway.setMessageCallback(messageHandler);
@@ -356,8 +329,6 @@ export class IMGatewayManager extends EventEmitter {
         target = this.dingtalkGateway.getNotificationTarget();
       } else if (platform === 'feishu') {
         target = this.feishuGateway.getNotificationTarget();
-      } else if (platform === 'discord') {
-        target = this.discordGateway.getNotificationTarget();
       } else if (platform === 'nim') {
         target = this.nimGateway.getNotificationTarget();
       } else if (platform === 'qq') {
@@ -385,8 +356,6 @@ export class IMGatewayManager extends EventEmitter {
         this.dingtalkGateway.setNotificationTarget(target);
       } else if (platform === 'feishu') {
         this.feishuGateway.setNotificationTarget(target);
-      } else if (platform === 'discord') {
-        this.discordGateway.setNotificationTarget(target);
       } else if (platform === 'nim') {
         this.nimGateway.setNotificationTarget(target);
       } else if (platform === 'qq') {
@@ -524,20 +493,6 @@ export class IMGatewayManager extends EventEmitter {
       }
     }
 
-    // Hot-update Discord config: restart if credential fields changed
-    if (config.discord && this.discordGateway) {
-      const oldDc = previousConfig.discord;
-      const newDc = { ...oldDc, ...config.discord };
-      const credentialsChanged = newDc.botToken !== oldDc.botToken;
-
-      if (credentialsChanged && this.discordGateway.isConnected()) {
-        console.log('[IMGatewayManager] Discord credentials changed, restarting gateway...');
-        this.restartGateway('discord').catch((err) => {
-          console.error('[IMGatewayManager] Failed to restart Discord after config change:', err.message);
-        });
-      }
-    }
-
     // Hot-update Xiaomifeng config: restart if credential fields changed
     if (config.xiaomifeng && this.xiaomifengGateway) {
       const oldXmf = previousConfig.xiaomifeng;
@@ -606,11 +561,22 @@ export class IMGatewayManager extends EventEmitter {
    * Get current status of all gateways
    */
   getStatus(): IMGatewayStatus {
-    // Telegram runs via OpenClaw; reflect enabled+configured state as connected
     const config = this.getConfig();
+    // Telegram runs via OpenClaw; reflect enabled+configured state as connected
     const tgConfig = config.telegram;
     const telegramStatus = {
       connected: Boolean(tgConfig?.enabled && tgConfig.botToken),
+      startedAt: null as number | null,
+      lastError: null as string | null,
+      botUsername: null as string | null,
+      lastInboundAt: null as number | null,
+      lastOutboundAt: null as number | null,
+    };
+    // Discord runs via OpenClaw; reflect enabled+configured state as connected
+    const dcConfig = config.discord;
+    const discordStatus = {
+      connected: Boolean(dcConfig?.enabled && dcConfig.botToken),
+      starting: false,
       startedAt: null as number | null,
       lastError: null as string | null,
       botUsername: null as string | null,
@@ -622,7 +588,7 @@ export class IMGatewayManager extends EventEmitter {
       feishu: this.feishuGateway.getStatus(),
       telegram: telegramStatus,
       qq: this.qqGateway.getStatus(),
-      discord: this.discordGateway.getStatus(),
+      discord: discordStatus,
       nim: this.nimGateway.getStatus(),
       xiaomifeng: this.xiaomifengGateway.getStatus(),
       wecom: this.wecomGateway.getStatus(),
@@ -639,6 +605,11 @@ export class IMGatewayManager extends EventEmitter {
     // Telegram always uses OpenClaw mode
     if (platform === 'telegram') {
       return this.testTelegramOpenClawConnectivity(configOverride);
+    }
+
+    // Discord always uses OpenClaw mode
+    if (platform === 'discord') {
+      return this.testDiscordOpenClawConnectivity(configOverride);
     }
 
     const config = this.buildMergedConfig(configOverride);
@@ -697,16 +668,11 @@ export class IMGatewayManager extends EventEmitter {
     const connected = this.isConnected(platform);
 
     if (enabled && !connected) {
-      const discordStarting = platform === 'discord' && status.discord.starting;
       addCheck({
         code: 'gateway_running',
-        level: discordStarting ? 'info' : 'warn',
-        message: discordStarting
-          ? 'IM 渠道正在启动，请稍后重试。'
-          : 'IM 渠道已启用但当前未连接。',
-        suggestion: discordStarting
-          ? '等待启动完成后重新测试。'
-          : '请检查网络、机器人配置和平台侧事件开关。',
+        level: 'warn',
+        message: 'IM 渠道已启用但当前未连接。',
+        suggestion: '请检查网络、机器人配置和平台侧事件开关。',
       });
     } else {
       addCheck({
@@ -792,13 +758,6 @@ export class IMGatewayManager extends EventEmitter {
         message: '飞书需要开启消息事件订阅（im.message.receive_v1）才能收消息。',
         suggestion: '请在飞书开发者后台确认事件订阅、权限和发布状态。',
       });
-    } else if (platform === 'discord') {
-      addCheck({
-        code: 'discord_group_requires_mention',
-        level: 'info',
-        message: 'Discord 群聊中仅响应 @机器人的消息。',
-        suggestion: '请在频道中使用 @机器人 + 内容触发对话。',
-      });
     } else if (platform === 'dingtalk') {
       addCheck({
         code: 'dingtalk_bot_membership_hint',
@@ -860,7 +819,11 @@ export class IMGatewayManager extends EventEmitter {
       await this.ensureOpenClawGatewayConnected?.();
       return;
     } else if (platform === 'discord') {
-      await this.discordGateway.start(config.discord);
+      // Discord runs via OpenClaw gateway
+      console.log('[IMGatewayManager] Discord in OpenClaw mode, syncing config instead of starting direct gateway');
+      await this.syncOpenClawConfig?.();
+      await this.ensureOpenClawGatewayConnected?.();
+      return;
     } else if (platform === 'nim') {
       await this.nimGateway.start(config.nim);
     } else if (platform === 'xiaomifeng') {
@@ -889,7 +852,10 @@ export class IMGatewayManager extends EventEmitter {
       await this.syncOpenClawConfig?.();
       return;
     } else if (platform === 'discord') {
-      await this.discordGateway.stop();
+      // Discord runs via OpenClaw gateway
+      console.log('[IMGatewayManager] Discord in OpenClaw mode, syncing disabled config');
+      await this.syncOpenClawConfig?.();
+      return;
     } else if (platform === 'nim') {
       await this.nimGateway.stop();
     } else if (platform === 'xiaomifeng') {
@@ -979,7 +945,6 @@ export class IMGatewayManager extends EventEmitter {
     await Promise.all([
       this.dingtalkGateway.stop(),
       this.feishuGateway.stop(),
-      this.discordGateway.stop(),
       this.nimGateway.stop(),
       this.xiaomifengGateway.stop(),
       this.qqGateway.stop(),
@@ -991,7 +956,7 @@ export class IMGatewayManager extends EventEmitter {
    * Check if any gateway is connected
    */
   isAnyConnected(): boolean {
-    return this.dingtalkGateway.isConnected() || this.feishuGateway.isConnected() || this.discordGateway.isConnected() || this.nimGateway.isConnected() || this.xiaomifengGateway.isConnected() || this.qqGateway.isConnected() || this.wecomGateway.isConnected();
+    return this.dingtalkGateway.isConnected() || this.feishuGateway.isConnected() || this.nimGateway.isConnected() || this.xiaomifengGateway.isConnected() || this.qqGateway.isConnected() || this.wecomGateway.isConnected();
   }
 
   /**
@@ -1007,7 +972,9 @@ export class IMGatewayManager extends EventEmitter {
       return Boolean(config.telegram?.enabled && config.telegram.botToken);
     }
     if (platform === 'discord') {
-      return this.discordGateway.isConnected();
+      // Discord runs via OpenClaw; consider it connected when enabled and configured
+      const config = this.getConfig();
+      return Boolean(config.discord?.enabled && config.discord.botToken);
     }
     if (platform === 'nim') {
       return this.nimGateway.isConnected();
@@ -1040,8 +1007,6 @@ export class IMGatewayManager extends EventEmitter {
         await this.dingtalkGateway.sendNotification(text);
       } else if (platform === 'feishu') {
         await this.feishuGateway.sendNotification(text);
-      } else if (platform === 'discord') {
-        await this.discordGateway.sendNotification(text);
       } else if (platform === 'nim') {
         await this.nimGateway.sendNotification(text);
       } else if (platform === 'qq') {
@@ -1069,8 +1034,6 @@ export class IMGatewayManager extends EventEmitter {
         await this.dingtalkGateway.sendNotificationWithMedia(text);
       } else if (platform === 'feishu') {
         await this.feishuGateway.sendNotificationWithMedia(text);
-      } else if (platform === 'discord') {
-        await this.discordGateway.sendNotificationWithMedia(text);
       } else if (platform === 'nim') {
         await this.nimGateway.sendNotificationWithMedia(text);
       } else if (platform === 'qq') {
@@ -1155,6 +1118,84 @@ export class IMGatewayManager extends EventEmitter {
       code: 'gateway_running',
       level: 'info',
       message: 'Telegram 通过 OpenClaw 运行时运行，Bot 将在 OpenClaw Gateway 启动后自动连接。',
+    });
+
+    const verdict: IMConnectivityVerdict = checks.some(c => c.level === 'fail')
+      ? 'fail'
+      : checks.some(c => c.level === 'warn')
+        ? 'warn'
+        : 'pass';
+
+    return { platform, testedAt, verdict, checks };
+  }
+
+  /**
+   * Test Discord connectivity when running via OpenClaw runtime.
+   * Validates bot token via Discord API (/users/@me).
+   */
+  private async testDiscordOpenClawConnectivity(
+    configOverride?: Partial<IMGatewayConfig>
+  ): Promise<IMConnectivityTestResult> {
+    const checks: IMConnectivityCheck[] = [];
+    const testedAt = Date.now();
+    const platform: IMPlatform = 'discord';
+
+    const mergedConfig = this.buildMergedConfig(configOverride);
+    const dcConfig = mergedConfig.discord;
+    const botToken = dcConfig?.botToken || '';
+
+    // Check 1: Bot token present
+    if (!botToken) {
+      checks.push({
+        code: 'missing_credentials',
+        level: 'fail',
+        message: '缺少必要配置项: botToken',
+        suggestion: '请补全 Bot Token 后重新测试连通性。',
+      });
+      return { platform, testedAt, verdict: 'fail', checks };
+    }
+
+    // Check 2: Auth probe via Discord API (/users/@me)
+    try {
+      const response = await this.withTimeout(
+        fetchJsonWithTimeout<DiscordUserResponse>(
+          'https://discord.com/api/v10/users/@me',
+          { headers: { Authorization: `Bot ${botToken}` } },
+          CONNECTIVITY_TIMEOUT_MS
+        ),
+        CONNECTIVITY_TIMEOUT_MS,
+        '鉴权探测超时'
+      );
+      const username = response?.username
+        ? `${response.username}${response.discriminator && response.discriminator !== '0' ? `#${response.discriminator}` : ''}`
+        : 'unknown';
+      checks.push({
+        code: 'auth_check',
+        level: 'pass',
+        message: `Discord Bot 鉴权通过（Bot: ${username}）。`,
+      });
+    } catch (error: any) {
+      checks.push({
+        code: 'auth_check',
+        level: 'fail',
+        message: `Discord Bot 鉴权失败: ${error.message}`,
+        suggestion: '请检查 Bot Token 是否正确，且网络通畅。',
+      });
+      return { platform, testedAt, verdict: 'fail', checks };
+    }
+
+    // Check 3: OpenClaw Gateway running info
+    checks.push({
+      code: 'gateway_running',
+      level: 'info',
+      message: 'Discord 通过 OpenClaw 运行时运行，Bot 将在 OpenClaw Gateway 启动后自动连接。',
+    });
+
+    // Check 4: Group mention hint
+    checks.push({
+      code: 'discord_group_requires_mention',
+      level: 'info',
+      message: 'Discord 群聊中仅响应 @机器人的消息。',
     });
 
     const verdict: IMConnectivityVerdict = checks.some(c => c.level === 'fail')
@@ -1300,16 +1341,6 @@ export class IMGatewayManager extends EventEmitter {
       } finally {
         try { tmpClient.disconnect(); } catch (_) { /* ignore */ }
       }
-    }
-
-    if (platform === 'discord') {
-      const response = await fetchJsonWithTimeout<DiscordUserResponse>('https://discord.com/api/v10/users/@me', {
-        headers: {
-          Authorization: `Bot ${config.discord.botToken}`,
-        },
-      }, CONNECTIVITY_TIMEOUT_MS);
-      const username = response.username ? `${response.username}#${response.discriminator || '0000'}` : 'unknown';
-      return `Discord 鉴权通过（Bot: ${username}）。`;
     }
 
     if (platform === 'qq') {

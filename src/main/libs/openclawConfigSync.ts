@@ -2,7 +2,7 @@ import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import type { CoworkConfig, CoworkExecutionMode } from '../coworkStore';
-import type { TelegramOpenClawConfig } from '../im/types';
+import type { TelegramOpenClawConfig, DiscordOpenClawConfig } from '../im/types';
 import type { DingTalkConfig, FeishuConfig, QQConfig, WecomConfig } from '../im/types';
 import { resolveRawApiConfig } from './claudeSettings';
 import type { OpenClawEngineManager } from './openclawEngineManager';
@@ -53,6 +53,7 @@ type OpenClawConfigSyncDeps = {
   engineManager: OpenClawEngineManager;
   getCoworkConfig: () => CoworkConfig;
   getTelegramOpenClawConfig?: () => TelegramOpenClawConfig | null;
+  getDiscordOpenClawConfig?: () => DiscordOpenClawConfig | null;
   getDingTalkConfig: () => DingTalkConfig | null;
   getFeishuConfig: () => FeishuConfig | null;
   getQQConfig: () => QQConfig | null;
@@ -63,6 +64,7 @@ export class OpenClawConfigSync {
   private readonly engineManager: OpenClawEngineManager;
   private readonly getCoworkConfig: () => CoworkConfig;
   private readonly getTelegramOpenClawConfig?: () => TelegramOpenClawConfig | null;
+  private readonly getDiscordOpenClawConfig?: () => DiscordOpenClawConfig | null;
   private readonly getDingTalkConfig: () => DingTalkConfig | null;
   private readonly getFeishuConfig: () => FeishuConfig | null;
   private readonly getQQConfig: () => QQConfig | null;
@@ -72,6 +74,7 @@ export class OpenClawConfigSync {
     this.engineManager = deps.engineManager;
     this.getCoworkConfig = deps.getCoworkConfig;
     this.getTelegramOpenClawConfig = deps.getTelegramOpenClawConfig;
+    this.getDiscordOpenClawConfig = deps.getDiscordOpenClawConfig;
     this.getDingTalkConfig = deps.getDingTalkConfig;
     this.getFeishuConfig = deps.getFeishuConfig;
     this.getQQConfig = deps.getQQConfig;
@@ -306,9 +309,58 @@ export class OpenClawConfigSync {
           telegramChannel.webhookSecret = tgConfig.webhookSecret;
         }
       }
-      managedConfig.channels = { telegram: telegramChannel };
+      managedConfig.channels = { ...(managedConfig.channels as Record<string, unknown> || {}), telegram: telegramChannel };
     } else if (tgConfig) {
-      managedConfig.channels = { telegram: { enabled: false } };
+      managedConfig.channels = { ...(managedConfig.channels as Record<string, unknown> || {}), telegram: { enabled: false } };
+    }
+
+    // Sync Discord OpenClaw channel config
+    const dcConfig = this.getDiscordOpenClawConfig?.();
+    if (dcConfig?.enabled && dcConfig.botToken) {
+      const discordChannel: Record<string, unknown> = {
+        enabled: true,
+        token: dcConfig.botToken,
+        dm: {
+          policy: dcConfig.dmPolicy || 'pairing',
+          allowFrom: (() => {
+            const ids = dcConfig.allowFrom?.length ? [...dcConfig.allowFrom] : [];
+            if (dcConfig.dmPolicy === 'open' && !ids.includes('*')) ids.push('*');
+            return ids;
+          })(),
+        },
+        groupPolicy: dcConfig.groupPolicy || 'allowlist',
+        guilds: (() => {
+          const guilds: Record<string, unknown> = {};
+          // Add allowed guilds from groupAllowFrom
+          if (dcConfig.groupAllowFrom?.length) {
+            for (const guildId of dcConfig.groupAllowFrom) {
+              guilds[guildId] = dcConfig.guilds?.[guildId] || {};
+            }
+          }
+          // Merge per-guild configs
+          if (dcConfig.guilds && Object.keys(dcConfig.guilds).length > 0) {
+            for (const [key, guildConfig] of Object.entries(dcConfig.guilds)) {
+              const existing = (guilds[key] || {}) as Record<string, unknown>;
+              guilds[key] = {
+                ...existing,
+                ...(guildConfig.requireMention !== undefined ? { requireMention: guildConfig.requireMention } : {}),
+                ...(guildConfig.allowFrom?.length ? { users: guildConfig.allowFrom } : {}),
+                ...(guildConfig.systemPrompt ? { systemPrompt: guildConfig.systemPrompt } : {}),
+              };
+            }
+          }
+          return Object.keys(guilds).length > 0 ? guilds : { '*': { requireMention: true } };
+        })(),
+        historyLimit: dcConfig.historyLimit || 50,
+        streaming: dcConfig.streaming || 'off',
+        mediaMaxMb: dcConfig.mediaMaxMb || 25,
+      };
+      if (dcConfig.proxy) {
+        discordChannel.proxy = dcConfig.proxy;
+      }
+      managedConfig.channels = { ...(managedConfig.channels as Record<string, unknown> || {}), discord: discordChannel };
+    } else if (dcConfig) {
+      managedConfig.channels = { ...(managedConfig.channels as Record<string, unknown> || {}), discord: { enabled: false } };
     }
 
     const nextContent = `${JSON.stringify(managedConfig, null, 2)}\n`;

@@ -447,7 +447,7 @@ interface IMGatewayConfig {
   feishu: FeishuConfig;
   telegram: TelegramOpenClawConfig;
   qq: QQConfig;
-  discord: DiscordConfig;
+  discord: DiscordOpenClawConfig;
   nim: NimConfig;
   xiaomifeng: XiaomifengConfig;
   wecom: WecomConfig;
@@ -502,10 +502,25 @@ interface TelegramOpenClawConfig {
   debug: boolean;
 }
 
-interface DiscordConfig {
+interface DiscordOpenClawGuildConfig {
+  requireMention?: boolean;
+  allowFrom?: string[];
+  systemPrompt?: string;
+}
+
+interface DiscordOpenClawConfig {
   enabled: boolean;
   botToken: string;
-  debug?: boolean;
+  dmPolicy: 'pairing' | 'allowlist' | 'open' | 'disabled';
+  allowFrom: string[];
+  groupPolicy: 'allowlist' | 'open' | 'disabled';
+  groupAllowFrom: string[];
+  guilds: Record<string, DiscordOpenClawGuildConfig>;
+  historyLimit: number;
+  streaming: 'off' | 'partial' | 'block' | 'progress';
+  mediaMaxMb: number;
+  proxy: string;
+  debug: boolean;
 }
 
 interface NimConfig {

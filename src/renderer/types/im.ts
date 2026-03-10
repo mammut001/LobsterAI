@@ -87,10 +87,25 @@ export interface TelegramOpenClawConfig {
 
 // ==================== Discord Types ====================
 
-export interface DiscordConfig {
+export interface DiscordOpenClawGuildConfig {
+  requireMention?: boolean;
+  allowFrom?: string[];
+  systemPrompt?: string;
+}
+
+export interface DiscordOpenClawConfig {
   enabled: boolean;
   botToken: string;
-  debug?: boolean;
+  dmPolicy: 'pairing' | 'allowlist' | 'open' | 'disabled';
+  allowFrom: string[];
+  groupPolicy: 'allowlist' | 'open' | 'disabled';
+  groupAllowFrom: string[];
+  guilds: Record<string, DiscordOpenClawGuildConfig>;
+  historyLimit: number;
+  streaming: 'off' | 'partial' | 'block' | 'progress';
+  mediaMaxMb: number;
+  proxy: string;
+  debug: boolean;
 }
 
 export interface DiscordGatewayStatus {
@@ -193,7 +208,7 @@ export interface IMGatewayConfig {
   feishu: FeishuConfig;
   telegram: TelegramOpenClawConfig;
   qq: QQConfig;
-  discord: DiscordConfig;
+  discord: DiscordOpenClawConfig;
   nim: NimConfig;
   xiaomifeng: XiaomifengConfig;
   wecom: WecomConfig;
@@ -324,10 +339,19 @@ export const DEFAULT_FEISHU_CONFIG: FeishuConfig = {
   debug: true,
 };
 
-export const DEFAULT_DISCORD_CONFIG: DiscordConfig = {
+export const DEFAULT_DISCORD_OPENCLAW_CONFIG: DiscordOpenClawConfig = {
   enabled: false,
   botToken: '',
-  debug: true,
+  dmPolicy: 'pairing',
+  allowFrom: [],
+  groupPolicy: 'allowlist',
+  groupAllowFrom: [],
+  guilds: { '*': { requireMention: true } },
+  historyLimit: 50,
+  streaming: 'off',
+  mediaMaxMb: 25,
+  proxy: '',
+  debug: false,
 };
 
 export const DEFAULT_NIM_CONFIG: NimConfig = {
@@ -389,7 +413,7 @@ export const DEFAULT_IM_CONFIG: IMGatewayConfig = {
   feishu: DEFAULT_FEISHU_CONFIG,
   telegram: DEFAULT_TELEGRAM_OPENCLAW_CONFIG,
   qq: DEFAULT_QQ_CONFIG,
-  discord: DEFAULT_DISCORD_CONFIG,
+  discord: DEFAULT_DISCORD_OPENCLAW_CONFIG,
   nim: DEFAULT_NIM_CONFIG,
   xiaomifeng: DEFAULT_XIAOMIFENG_CONFIG,
   wecom: DEFAULT_WECOM_CONFIG,

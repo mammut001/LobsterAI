@@ -707,6 +707,13 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
           return null;
         }
       },
+      getDiscordOpenClawConfig: () => {
+        try {
+          return getIMGatewayManager()?.getConfig()?.discord ?? null;
+        } catch {
+          return null;
+        }
+      },
     });
   }
   return openClawConfigSync;
@@ -2291,6 +2298,17 @@ if (!gotTheLock) {
         if (engineManager.getStatus().phase === 'running') {
           await syncOpenClawConfig({
             reason: 'telegram-openclaw-config-change',
+            restartGatewayIfRunning: true,
+          });
+        }
+      }
+
+      // Sync Discord config to OpenClaw runtime if changed
+      if (config.discord) {
+        const engineManager = getOpenClawEngineManager();
+        if (engineManager.getStatus().phase === 'running') {
+          await syncOpenClawConfig({
+            reason: 'discord-openclaw-config-change',
             restartGatewayIfRunning: true,
           });
         }

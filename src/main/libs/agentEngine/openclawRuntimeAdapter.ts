@@ -23,7 +23,7 @@ const OPENCLAW_GATEWAY_TOOL_EVENTS_CAP = 'tool-events';
 const BRIDGE_MAX_MESSAGES = 20;
 const BRIDGE_MAX_MESSAGE_CHARS = 1200;
 const GATEWAY_READY_TIMEOUT_MS = 15_000;
-const FINAL_HISTORY_SYNC_LIMIT = 24;
+const FINAL_HISTORY_SYNC_LIMIT = 50;
 
 type GatewayEventFrame = {
   event: string;
@@ -110,11 +110,13 @@ type ActiveTurn = {
 type BufferedChatEvent = {
   payload: unknown;
   seq: number | undefined;
+  bufferedAt: number;
 };
 
 type BufferedAgentEvent = {
   payload: unknown;
   seq: number | undefined;
+  bufferedAt: number;
 };
 
 type PendingApprovalEntry = {
@@ -130,6 +132,10 @@ const truncate = (value: string, maxChars: number): string => {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, maxChars)}...`;
 };
+
+/** Strip Discord mention markup: <@userId>, <@!userId>, <#channelId>, <@&roleId> */
+const stripDiscordMentions = (text: string): string =>
+  text.replace(/<@!?\d+>/g, '').replace(/<#\d+>/g, '').replace(/<@&\d+>/g, '').trim();
 
 const extractMessageText = (message: unknown): string => {
   if (typeof message === 'string') {
@@ -592,6 +598,27 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       // Sync full history for newly discovered sessions
       for (const { sessionId, sessionKey } of newSessionsToSync) {
         await this.syncFullChannelHistory(sessionId, sessionKey);
+      }
+
+      // Incremental sync for already-known sessions: check if the gateway has messages
+      // that weren't picked up during initial sync or real-time events.
+      // Only run when no new sessions were discovered (to avoid excessive RPC calls).
+      if (!hasNew && channelCount > 0) {
+        for (const row of sessions) {
+          const key = typeof row?.key === 'string' ? row.key : '';
+          if (!key) continue;
+          if (!this.channelSessionSync.isChannelSessionKey(key)) continue;
+          if (this.deletedChannelKeys.has(key)) continue;
+          const sessionId = this.sessionIdBySessionKey.get(key);
+          if (!sessionId || !this.fullySyncedSessions.has(sessionId)) continue;
+          // Skip sessions with an active turn (they handle their own sync)
+          if (this.activeTurns.has(sessionId)) continue;
+          try {
+            await this.incrementalChannelSync(sessionId, key);
+          } catch (err) {
+            console.warn('[ChannelSync] incremental sync failed for', key, err);
+          }
+        }
       }
     } catch (error) {
       console.error('[ChannelSync] pollChannelSessions: error during polling:', error);
@@ -1272,7 +1299,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     // Must be checked BEFORE seq dedup so that replayed events are not dropped.
     if (turn.pendingUserSync) {
       console.log('[Debug:handleAgentEvent] buffering agent event (pendingUserSync), sessionId:', sessionId, 'buffered:', turn.bufferedAgentPayloads.length + 1);
-      turn.bufferedAgentPayloads.push({ payload: agentPayload, seq });
+      turn.bufferedAgentPayloads.push({ payload: agentPayload, seq, bufferedAt: Date.now() });
       return;
     }
 
@@ -1547,7 +1574,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     // Buffer chat events while user messages are being prefetched for channel sessions
     if (turn.pendingUserSync) {
       console.log('[Debug:handleChatEvent] buffering chat event (pendingUserSync), sessionId:', sessionId, 'buffered:', turn.bufferedChatPayloads.length + 1);
-      turn.bufferedChatPayloads.push({ payload, seq });
+      turn.bufferedChatPayloads.push({ payload, seq, bufferedAt: Date.now() });
       return;
     }
 
@@ -1985,7 +2012,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         && this.channelSessionSync.isChannelSessionKey(turn.sessionKey);
       if (isChannel) {
         const latestOnly = this.reCreatedChannelSessionIds.has(sessionId);
-        this.syncChannelUserMessages(sessionId, history.messages, latestOnly);
+        this.syncChannelUserMessages(sessionId, history.messages, latestOnly, turn.sessionKey.includes(':discord:'));
       }
 
       let canonicalText = '';
@@ -2074,63 +2101,85 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
    * Called at the start of a new turn (via prefetchChannelUserMessages) so that user messages
    * appear before the assistant's streaming response. Both chat and agent events are buffered
    * during prefetch, so the replay order matches direct cowork sessions.
+   *
+   * Uses position-based matching: compares history entries with local messages sequentially
+   * to avoid false dedup of identical-content messages (e.g. two "ok" messages in a row).
    */
-  private syncChannelUserMessages(sessionId: string, historyMessages: unknown[], latestOnly = false): void {
+  private syncChannelUserMessages(sessionId: string, historyMessages: unknown[], latestOnly = false, isDiscord = false): void {
     console.log('[Debug:syncChannelUserMessages] sessionId:', sessionId, 'historyMessages:', historyMessages.length, 'latestOnly:', latestOnly);
     const session = this.store.getSession(sessionId);
 
-    // Count existing user messages in store by text
-    const storeTextCounts = new Map<string, number>();
+    // Build ordered list of existing local messages (role + text)
+    type MsgEntry = { role: 'user' | 'assistant'; text: string };
+    const localEntries: MsgEntry[] = [];
     if (session) {
       for (const msg of session.messages) {
-        if (msg.type === 'user') {
-          const t = msg.content.trim();
-          storeTextCounts.set(t, (storeTextCounts.get(t) ?? 0) + 1);
+        if (msg.type === 'user' || msg.type === 'assistant') {
+          localEntries.push({ role: msg.type, text: msg.content.trim() });
         }
       }
     }
-    console.log('[Debug:syncChannelUserMessages] store user text entries:', storeTextCounts.size);
 
-    // Collect ALL user messages from history (in order)
-    const historyUserTexts: string[] = [];
+    // Collect user + assistant messages from history in chronological order
+    const historyEntries: MsgEntry[] = [];
     for (const message of historyMessages) {
       if (!isRecord(message)) continue;
       const role = typeof message.role === 'string' ? message.role.trim().toLowerCase() : '';
-      if (role !== 'user') continue;
-      const text = extractMessageText(message).trim();
+      if (role !== 'user' && role !== 'assistant') continue;
+      let text = extractMessageText(message).trim();
+      if (isDiscord) text = stripDiscordMentions(text);
       if (text) {
-        historyUserTexts.push(text);
+        historyEntries.push({ role: role as 'user' | 'assistant', text });
       }
     }
-    console.log('[Debug:syncChannelUserMessages] history user texts:', historyUserTexts.length);
+    console.log('[Debug:syncChannelUserMessages] local entries:', localEntries.length, 'history entries:', historyEntries.length);
 
     // When latestOnly is true (e.g. session re-created after deletion),
     // only sync the last user message — the one that triggered this turn.
-    if (latestOnly && historyUserTexts.length > 1) {
-      const lastText = historyUserTexts[historyUserTexts.length - 1];
-      historyUserTexts.length = 0;
-      historyUserTexts.push(lastText);
+    if (latestOnly && historyEntries.length > 1) {
+      const lastUser = [...historyEntries].reverse().find(e => e.role === 'user');
+      historyEntries.length = 0;
+      if (lastUser) historyEntries.push(lastUser);
       console.log('[Debug:syncChannelUserMessages] latestOnly: trimmed to last user message');
     }
 
-    // Add new messages in history order, skipping ones already in store
-    const remainingCounts = new Map<string, number>(storeTextCounts);
-    let syncedCount = 0;
-    for (const text of historyUserTexts) {
-      const remaining = remainingCounts.get(text) ?? 0;
-      if (remaining > 0) {
-        remainingCounts.set(text, remaining - 1);
-        continue;
+    // Position-based matching: find the longest prefix of historyEntries that matches localEntries.
+    // Scan historyEntries from the start and consume matching localEntries in order.
+    // Once all local entries are consumed or a mismatch is found at the boundary,
+    // the remaining history entries are considered new and should be appended.
+    let localIdx = 0;
+    let firstNewIdx = 0;
+    for (let i = 0; i < historyEntries.length; i++) {
+      if (localIdx < localEntries.length
+        && historyEntries[i].role === localEntries[localIdx].role
+        && historyEntries[i].text === localEntries[localIdx].text) {
+        localIdx++;
+        firstNewIdx = i + 1;
       }
-      const userMessage = this.store.addMessage(sessionId, {
-        type: 'user',
-        content: text,
-        metadata: {},
-      });
-      this.emit('message', sessionId, userMessage);
+    }
+
+    // Append messages from firstNewIdx onwards
+    let syncedCount = 0;
+    for (let i = firstNewIdx; i < historyEntries.length; i++) {
+      const entry = historyEntries[i];
+      if (entry.role === 'user') {
+        const userMessage = this.store.addMessage(sessionId, {
+          type: 'user',
+          content: entry.text,
+          metadata: {},
+        });
+        this.emit('message', sessionId, userMessage);
+      } else {
+        const assistantMessage = this.store.addMessage(sessionId, {
+          type: 'assistant',
+          content: entry.text,
+          metadata: { isStreaming: false, isFinal: true },
+        });
+        this.emit('message', sessionId, assistantMessage);
+      }
       syncedCount++;
     }
-    console.log('[Debug:syncChannelUserMessages] synced', syncedCount, 'new user messages');
+    console.log('[Debug:syncChannelUserMessages] synced', syncedCount, 'new messages (firstNewIdx:', firstNewIdx, ')');
   }
 
   private getUserMessageCount(sessionId: string): number {
@@ -2143,6 +2192,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
    * Sync full conversation history for a newly discovered channel session.
    * Adds both user and assistant messages to the local CoworkStore in order.
    * Skipped if the session has already been fully synced.
+   *
+   * Uses position-based matching to avoid false dedup of identical-content messages.
    */
   private async syncFullChannelHistory(sessionId: string, sessionKey: string): Promise<void> {
     if (this.fullySyncedSessions.has(sessionId)) return;
@@ -2163,55 +2214,62 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       }
 
       const session = this.store.getSession(sessionId);
-      // Build set of existing message texts to avoid duplicates
-      const existingUserTexts = new Map<string, number>();
-      const existingAssistantTexts = new Map<string, number>();
+      // Build ordered list of existing local messages for position-based matching
+      type MsgEntry = { role: 'user' | 'assistant'; text: string };
+      const localEntries: MsgEntry[] = [];
       if (session) {
         for (const msg of session.messages) {
-          if (msg.type === 'user') {
-            const t = msg.content.trim();
-            existingUserTexts.set(t, (existingUserTexts.get(t) ?? 0) + 1);
-          } else if (msg.type === 'assistant') {
-            const t = msg.content.trim();
-            existingAssistantTexts.set(t, (existingAssistantTexts.get(t) ?? 0) + 1);
+          if (msg.type === 'user' || msg.type === 'assistant') {
+            localEntries.push({ role: msg.type, text: msg.content.trim() });
           }
         }
       }
 
-      let syncedCount = 0;
+      const isDiscord = sessionKey.includes(':discord:');
+      // Build history entries
+      const historyEntries: MsgEntry[] = [];
       for (const message of history.messages) {
         if (!isRecord(message)) continue;
         const role = typeof message.role === 'string' ? message.role.trim().toLowerCase() : '';
-        const text = extractMessageText(message).trim();
-        if (!text) continue;
+        if (role !== 'user' && role !== 'assistant') continue;
+        let text = extractMessageText(message).trim();
+        if (isDiscord) text = stripDiscordMentions(text);
+        if (text) {
+          historyEntries.push({ role: role as 'user' | 'assistant', text });
+        }
+      }
 
-        if (role === 'user') {
-          const remaining = existingUserTexts.get(text) ?? 0;
-          if (remaining > 0) {
-            existingUserTexts.set(text, remaining - 1);
-            continue;
-          }
+      // Position-based matching: find where local messages end in the history sequence
+      let localIdx = 0;
+      let firstNewIdx = 0;
+      for (let i = 0; i < historyEntries.length; i++) {
+        if (localIdx < localEntries.length
+          && historyEntries[i].role === localEntries[localIdx].role
+          && historyEntries[i].text === localEntries[localIdx].text) {
+          localIdx++;
+          firstNewIdx = i + 1;
+        }
+      }
+
+      let syncedCount = 0;
+      for (let i = firstNewIdx; i < historyEntries.length; i++) {
+        const entry = historyEntries[i];
+        if (entry.role === 'user') {
           const userMsg = this.store.addMessage(sessionId, {
             type: 'user',
-            content: text,
+            content: entry.text,
             metadata: {},
           });
           this.emit('message', sessionId, userMsg);
-          syncedCount++;
-        } else if (role === 'assistant') {
-          const remaining = existingAssistantTexts.get(text) ?? 0;
-          if (remaining > 0) {
-            existingAssistantTexts.set(text, remaining - 1);
-            continue;
-          }
+        } else {
           const assistantMsg = this.store.addMessage(sessionId, {
             type: 'assistant',
-            content: text,
+            content: entry.text,
             metadata: { isStreaming: false, isFinal: true },
           });
           this.emit('message', sessionId, assistantMsg);
-          syncedCount++;
         }
+        syncedCount++;
       }
 
       console.log('[ChannelSync] syncFullChannelHistory: synced', syncedCount, 'messages for sessionId:', sessionId);
@@ -2228,6 +2286,35 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       console.error('[ChannelSync] syncFullChannelHistory: error:', error);
       // Remove from synced set so retry is possible
       this.fullySyncedSessions.delete(sessionId);
+    }
+  }
+
+  /**
+   * Incremental sync for an already-known channel session.
+   * Fetches recent history and appends any messages not yet in the local store.
+   * Lightweight: uses position-based matching so only truly new messages are added.
+   */
+  private async incrementalChannelSync(sessionId: string, sessionKey: string): Promise<void> {
+    const client = this.gatewayClient;
+    if (!client) return;
+
+    const history = await client.request<{ messages?: unknown[] }>('chat.history', {
+      sessionKey,
+      limit: FINAL_HISTORY_SYNC_LIMIT,
+    });
+    if (!Array.isArray(history?.messages) || history.messages.length === 0) return;
+
+    const beforeCount = this.store.getSession(sessionId)?.messages.length ?? 0;
+    this.syncChannelUserMessages(sessionId, history.messages, false, sessionKey.includes(':discord:'));
+    const afterCount = this.store.getSession(sessionId)?.messages.length ?? 0;
+
+    if (afterCount > beforeCount) {
+      console.log('[ChannelSync] incrementalSync: added', afterCount - beforeCount, 'messages for', sessionKey);
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('cowork:sessions:changed');
+        }
+      }
     }
   }
 
@@ -2347,7 +2434,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   private async prefetchChannelUserMessages(sessionId: string, sessionKey: string): Promise<void> {
     console.log('[Debug:prefetch] start — sessionId:', sessionId, 'sessionKey:', sessionKey);
 
-    const MAX_ATTEMPTS = 3;
+    const MAX_ATTEMPTS = 5;
+    const BACKOFF_DELAYS = [500, 1000, 1500, 2000]; // exponential-ish backoff
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       try {
         const client = this.gatewayClient;
@@ -2366,7 +2454,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         if (Array.isArray(history?.messages) && history.messages.length > 0) {
           const latestOnly = this.reCreatedChannelSessionIds.has(sessionId);
           const beforeCount = this.getUserMessageCount(sessionId);
-          this.syncChannelUserMessages(sessionId, history.messages, latestOnly);
+          this.syncChannelUserMessages(sessionId, history.messages, latestOnly, sessionKey.includes(':discord:'));
           const afterCount = this.getUserMessageCount(sessionId);
           const newUserMessages = afterCount - beforeCount;
           console.log('[Debug:prefetch] synced user messages:', newUserMessages, '(before:', beforeCount, 'after:', afterCount, ')');
@@ -2379,8 +2467,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
           const turn = this.activeTurns.get(sessionId);
           if (turn && (turn.bufferedChatPayloads.length > 0 || turn.bufferedAgentPayloads.length > 0)) {
             if (attempt < MAX_ATTEMPTS - 1) {
-              console.log('[Debug:prefetch] no new user messages but have buffered events, retrying after delay...');
-              await new Promise((resolve) => setTimeout(resolve, 300));
+              const delay = BACKOFF_DELAYS[Math.min(attempt, BACKOFF_DELAYS.length - 1)];
+              console.log('[Debug:prefetch] no new user messages but have buffered events, retrying after', delay, 'ms...');
+              await new Promise((resolve) => setTimeout(resolve, delay));
               continue;
             }
           }
@@ -2390,8 +2479,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
           const turn = this.activeTurns.get(sessionId);
           if (turn && (turn.bufferedChatPayloads.length > 0 || turn.bufferedAgentPayloads.length > 0)) {
             if (attempt < MAX_ATTEMPTS - 1) {
-              console.log('[Debug:prefetch] empty history but have buffered events, retrying after delay...');
-              await new Promise((resolve) => setTimeout(resolve, 300));
+              const delay = BACKOFF_DELAYS[Math.min(attempt, BACKOFF_DELAYS.length - 1)];
+              console.log('[Debug:prefetch] empty history but have buffered events, retrying after', delay, 'ms...');
+              await new Promise((resolve) => setTimeout(resolve, delay));
               continue;
             }
           }
@@ -2400,7 +2490,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       } catch (error) {
         console.warn('[OpenClawRuntime] prefetchChannelUserMessages attempt', attempt, 'failed:', error);
         if (attempt < MAX_ATTEMPTS - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          const delay = BACKOFF_DELAYS[Math.min(attempt, BACKOFF_DELAYS.length - 1)];
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
@@ -2419,20 +2510,27 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     // Merge and replay both chat and agent events in sequence order
     // so that tool use/result messages are interleaved with assistant text segments
     // just like in direct cowork sessions.
-    const allBuffered: Array<{ type: 'chat' | 'agent'; payload: unknown; seq?: number }> = [];
+    const allBuffered: Array<{ type: 'chat' | 'agent'; payload: unknown; seq?: number; bufferedAt: number; idx: number }> = [];
+    let bufIdx = 0;
     for (const event of turn.bufferedChatPayloads) {
-      allBuffered.push({ type: 'chat', payload: event.payload, seq: event.seq });
+      allBuffered.push({ type: 'chat', payload: event.payload, seq: event.seq, bufferedAt: event.bufferedAt, idx: bufIdx++ });
     }
     for (const event of turn.bufferedAgentPayloads) {
-      allBuffered.push({ type: 'agent', payload: event.payload, seq: event.seq });
+      allBuffered.push({ type: 'agent', payload: event.payload, seq: event.seq, bufferedAt: event.bufferedAt, idx: bufIdx++ });
     }
     turn.bufferedChatPayloads = [];
     turn.bufferedAgentPayloads = [];
 
     allBuffered.sort((a, b) => {
-      const seqA = typeof a.seq === 'number' ? a.seq : Infinity;
-      const seqB = typeof b.seq === 'number' ? b.seq : Infinity;
-      return seqA - seqB;
+      // Primary: sort by seq if both have it
+      const hasSeqA = typeof a.seq === 'number';
+      const hasSeqB = typeof b.seq === 'number';
+      if (hasSeqA && hasSeqB) return a.seq! - b.seq!;
+      // Events with seq come before events without
+      if (hasSeqA !== hasSeqB) return hasSeqA ? -1 : 1;
+      // Fallback: preserve arrival order via bufferedAt, then insertion index
+      if (a.bufferedAt !== b.bufferedAt) return a.bufferedAt - b.bufferedAt;
+      return a.idx - b.idx;
     });
 
     for (const event of allBuffered) {

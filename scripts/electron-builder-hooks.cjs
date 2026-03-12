@@ -145,7 +145,8 @@ function ensureBundledOpenClawRuntime(context) {
   if (existsSync(gatewayAsarPath)) {
     let entries;
     try {
-      entries = new Set(asar.listPackage(gatewayAsarPath));
+      // Normalize paths: on Windows, asar.listPackage may return backslash paths
+      entries = new Set(asar.listPackage(gatewayAsarPath).map(e => e.replace(/\\/g, '/')));
     } catch (error) {
       throw new Error(
         '[electron-builder-hooks] Failed to read OpenClaw gateway.asar: '

@@ -3229,6 +3229,13 @@ if (!gotTheLock) {
   // 设置 Content Security Policy
   const setContentSecurityPolicy = () => {
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      // 跳过企微授权页面，让其使用自身的 CSP（否则外部脚本被阻止导致空白页）
+      const url = details.url || '';
+      if (url.includes('work.weixin.qq.com') || url.includes('wwcdn.weixin.qq.com')) {
+        callback({ responseHeaders: details.responseHeaders });
+        return;
+      }
+
       const devPort = process.env.ELECTRON_START_URL?.match(/:(\d+)/)?.[1] || '5175';
       const cspDirectives = [
         "default-src 'self'",
@@ -3311,6 +3318,47 @@ if (!gotTheLock) {
 
     // 禁用窗口菜单
     mainWindow.setMenu(null);
+
+    // 处理 window.open 请求（企微 SDK 授权弹窗等）
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+      console.log('[Main] setWindowOpenHandler called with URL:', url);
+      if (url.includes('work.weixin.qq.com') || url.includes('open.work.weixin.qq.com')) {
+        console.log('[Main] Allowing WeCom auth popup for URL:', url);
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 950,
+            height: 640,
+            title: '企业微信授权',
+            autoHideMenuBar: true,
+            webPreferences: {
+              nodeIntegration: false,
+              contextIsolation: true,
+              sandbox: true,
+            },
+          },
+        };
+      }
+      console.log('[Main] Denying popup, opening externally:', url);
+      shell.openExternal(url);
+      return { action: 'deny' };
+    });
+
+    // 监听子窗口创建事件
+    mainWindow.webContents.on('did-create-window', (childWindow) => {
+      console.log('[Main] Child window created, URL:', childWindow.webContents.getURL());
+      childWindow.webContents.on('did-finish-load', () => {
+        console.log('[Main] Child window finished loading:', childWindow.webContents.getURL());
+      });
+      childWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+        console.log('[Main] Child window failed to load:', validatedURL, 'error:', errorCode, errorDescription);
+      });
+      // 捕获子窗口的控制台日志
+      childWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+        const levelStr = ['LOG', 'WARN', 'ERROR'][level] || 'INFO';
+        console.log(`[Main] Child window console [${levelStr}]: ${message} (${sourceId}:${line})`);
+      });
+    });
 
     // 设置窗口的最小尺寸
     mainWindow.setMinimumSize(800, 600);

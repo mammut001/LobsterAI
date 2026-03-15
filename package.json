@@ -29,7 +29,7 @@
       {
         "id": "wecom-openclaw-plugin",
         "npm": "@wecom/wecom-openclaw-plugin",
-        "version": "1.0.6"
+        "version": "1.0.11"
       }
     ]
   },
@@ -91,6 +91,7 @@
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@reduxjs/toolkit": "^2.2.1",
     "@types/uuid": "^10.0.0",
+    "@wecom/wecom-aibot-sdk": "^0.1.0",
     "bufferutil": "^4.1.0",
     "cron-parser": "^5.5.0",
     "dompurify": "^3.3.1",

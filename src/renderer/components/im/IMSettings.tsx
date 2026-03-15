@@ -13,6 +13,7 @@ import { setDingTalkConfig, setFeishuConfig, setTelegramOpenClawConfig, setQQCon
 import { i18nService } from '../../services/i18n';
 import type { IMPlatform, IMConnectivityCheck, IMConnectivityTestResult, IMGatewayConfig, TelegramOpenClawConfig, DiscordOpenClawConfig, FeishuOpenClawConfig, DingTalkOpenClawConfig, QQOpenClawConfig, WecomOpenClawConfig } from '../../types/im';
 import { getVisibleIMPlatforms } from '../../utils/regionFilter';
+import WecomAIBotSDK from '@wecom/wecom-aibot-sdk';
 
 // Platform metadata - logos only, labels use i18n
 const platformLogos: Record<IMPlatform, string> = {
@@ -68,6 +69,10 @@ const IMSettings: React.FC = () => {
   const [togglingPlatform, setTogglingPlatform] = useState<IMPlatform | null>(null);
   // Track visibility of password fields (eye toggle)
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  // WeCom quick setup state
+  const [wecomConfigTab, setWecomConfigTab] = useState<'quick' | 'manual'>('quick');
+  const [wecomQuickSetupStatus, setWecomQuickSetupStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
+  const [wecomQuickSetupError, setWecomQuickSetupError] = useState<string>('');
 
   // Track the last-persisted NIM credentials so we can detect real changes on save
   const savedNimConfigRef = useRef<{ appKey: string; account: string; token: string }>({
@@ -220,6 +225,28 @@ const IMSettings: React.FC = () => {
       ? { ...wecomOpenClawConfig, ...override }
       : wecomOpenClawConfig;
     await imService.updateConfig({ wecom: configToSave });
+  };
+
+  const handleWecomQuickSetup = async () => {
+    setWecomQuickSetupStatus('pending');
+    setWecomQuickSetupError('');
+    try {
+      console.log('[WecomQuickSetup] Starting quick setup with source: lobster-ai');
+      const bot = await WecomAIBotSDK.openBotInfoAuthWindow({
+        source: 'lobster-ai',
+        debug: true,
+      });
+      console.log('[WecomQuickSetup] Bot created:', bot);
+      const update = { botId: bot.botid, secret: bot.secret };
+      handleWecomOpenClawChange(update);
+      await handleSaveWecomOpenClawConfig(update);
+      setWecomQuickSetupStatus('success');
+    } catch (error: unknown) {
+      console.error('[WecomQuickSetup] Error:', error);
+      setWecomQuickSetupStatus('error');
+      const err = error as { message?: string; code?: string };
+      setWecomQuickSetupError(err.message || err.code || 'Unknown error');
+    }
   };
 
   // Save config on blur — also auto-triggers NIM connectivity test when
@@ -2612,215 +2639,278 @@ const IMSettings: React.FC = () => {
         {/* WeCom (企业微信) Settings */}
         {activePlatform === 'wecom' && (
           <div className="space-y-3">
-            {/* Bot ID */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                Bot ID
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={wecomOpenClawConfig.botId}
-                  onChange={(e) => handleWecomOpenClawChange({ botId: e.target.value })}
-                  onBlur={() => handleSaveWecomOpenClawConfig()}
-                  className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 pr-8 text-sm transition-colors"
-                  placeholder={i18nService.t('imWecomBotIdPlaceholder')}
-                />
-                {wecomOpenClawConfig.botId && (
-                  <div className="absolute right-2 inset-y-0 flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => { handleWecomOpenClawChange({ botId: '' }); void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, botId: '' } }); }}
-                      className="p-0.5 rounded text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-accent transition-colors"
-                      title={i18nService.t('clear') || 'Clear'}
-                    >
-                      <XCircleIconSolid className="h-4 w-4" />
-                    </button>
+            {/* Tab switcher */}
+            <div className="flex border-b dark:border-claude-darkBorder/60 border-claude-border/60">
+              <button
+                type="button"
+                className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                  wecomConfigTab === 'quick'
+                    ? 'border-claude-accent text-claude-accent'
+                    : 'border-transparent text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-text dark:hover:text-claude-darkText'
+                }`}
+                onClick={() => setWecomConfigTab('quick')}
+              >
+                {i18nService.t('imWecomQuickSetup')}
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                  wecomConfigTab === 'manual'
+                    ? 'border-claude-accent text-claude-accent'
+                    : 'border-transparent text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-text dark:hover:text-claude-darkText'
+                }`}
+                onClick={() => setWecomConfigTab('manual')}
+              >
+                {i18nService.t('imWecomManualSetup')}
+              </button>
+            </div>
+
+            {/* Quick Setup Tab */}
+            {wecomConfigTab === 'quick' && (
+              <div className="space-y-3">
+                <p className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
+                  {i18nService.t('imWecomQuickSetupDesc')}
+                </p>
+                <button
+                  type="button"
+                  disabled={wecomQuickSetupStatus === 'pending'}
+                  onClick={handleWecomQuickSetup}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-claude-accent text-white hover:bg-claude-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {wecomQuickSetupStatus === 'pending'
+                    ? i18nService.t('imWecomQuickSetupPending')
+                    : i18nService.t('imWecomQuickSetupBtn')}
+                </button>
+                {wecomQuickSetupStatus === 'success' && (
+                  <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-500/10 px-3 py-2 rounded-lg">
+                    <CheckCircleIcon className="h-4 w-4 flex-shrink-0" />
+                    {i18nService.t('imWecomQuickSetupSuccess')}
+                  </div>
+                )}
+                {wecomQuickSetupStatus === 'error' && (
+                  <div className="flex items-center gap-1.5 text-xs text-red-500 bg-red-500/10 px-3 py-2 rounded-lg">
+                    <XCircleIcon className="h-4 w-4 flex-shrink-0" />
+                    {i18nService.t('imWecomQuickSetupError')}: {wecomQuickSetupError}
                   </div>
                 )}
               </div>
-            </div>
+            )}
 
-            {/* Secret */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                Secret
-              </label>
-              <div className="relative">
-                <input
-                  type={showSecrets['wecom.secret'] ? 'text' : 'password'}
-                  value={wecomOpenClawConfig.secret}
-                  onChange={(e) => handleWecomOpenClawChange({ secret: e.target.value })}
-                  onBlur={() => handleSaveWecomOpenClawConfig()}
-                  className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 pr-16 text-sm transition-colors"
-                  placeholder="••••••••••••"
-                />
-                <div className="absolute right-2 inset-y-0 flex items-center gap-1">
-                  {wecomOpenClawConfig.secret && (
-                    <button
-                      type="button"
-                      onClick={() => { handleWecomOpenClawChange({ secret: '' }); void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, secret: '' } }); }}
-                      className="p-0.5 rounded text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-accent transition-colors"
-                      title={i18nService.t('clear') || 'Clear'}
-                    >
-                      <XCircleIconSolid className="h-4 w-4" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowSecrets(prev => ({ ...prev, 'wecom.secret': !prev['wecom.secret'] }))}
-                    className="p-0.5 rounded text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-accent transition-colors"
-                    title={showSecrets['wecom.secret'] ? (i18nService.t('hide') || 'Hide') : (i18nService.t('show') || 'Show')}
-                  >
-                    {showSecrets['wecom.secret'] ? <EyeIcon className="h-4 w-4" /> : <EyeSlashIcon className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <p className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
-                {i18nService.t('imWecomCredentialHint')}
-              </p>
-            </div>
-
-            {/* Advanced Settings (collapsible) */}
-            <details className="group">
-              <summary className="cursor-pointer text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-accent transition-colors">
-                {i18nService.t('imAdvancedSettings')}
-              </summary>
-              <div className="mt-2 space-y-3 pl-2 border-l-2 border-claude-border/30 dark:border-claude-darkBorder/30">
-                {/* DM Policy */}
+            {/* Manual Setup Tab */}
+            {wecomConfigTab === 'manual' && (
+              <div className="space-y-3">
+                {/* Bot ID */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    DM Policy
+                    Bot ID
                   </label>
-                  <select
-                    value={wecomOpenClawConfig.dmPolicy}
-                    onChange={(e) => {
-                      const update = { dmPolicy: e.target.value as WecomOpenClawConfig['dmPolicy'] };
-                      handleWecomOpenClawChange(update);
-                      void handleSaveWecomOpenClawConfig(update);
-                    }}
-                    className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
-                  >
-                    <option value="open">{i18nService.t('imDmPolicyOpen')}</option>
-                    <option value="pairing">{i18nService.t('imDmPolicyPairing')}</option>
-                    <option value="allowlist">{i18nService.t('imDmPolicyAllowlist')}</option>
-                    <option value="disabled">{i18nService.t('imDmPolicyDisabled')}</option>
-                  </select>
-                </div>
-
-                {/* Pairing Requests (shown when dmPolicy is 'pairing') */}
-                {wecomOpenClawConfig.dmPolicy === 'pairing' && renderPairingSection('wecom')}
-
-                {/* Allow From */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    Allow From (User IDs)
-                  </label>
-                  <div className="flex gap-2">
+                  <div className="relative">
                     <input
                       type="text"
-                      value={allowedUserIdInput}
-                      onChange={(e) => setAllowedUserIdInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const id = allowedUserIdInput.trim();
-                          if (id && !wecomOpenClawConfig.allowFrom.includes(id)) {
-                            const newIds = [...wecomOpenClawConfig.allowFrom, id];
-                            handleWecomOpenClawChange({ allowFrom: newIds });
-                            setAllowedUserIdInput('');
-                            void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, allowFrom: newIds } });
-                          }
-                        }
-                      }}
-                      className="block flex-1 rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
-                      placeholder={i18nService.t('imWecomUserIdPlaceholder')}
+                      value={wecomOpenClawConfig.botId}
+                      onChange={(e) => handleWecomOpenClawChange({ botId: e.target.value })}
+                      onBlur={() => handleSaveWecomOpenClawConfig()}
+                      className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 pr-8 text-sm transition-colors"
+                      placeholder={i18nService.t('imWecomBotIdPlaceholder')}
                     />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const id = allowedUserIdInput.trim();
-                        if (id && !wecomOpenClawConfig.allowFrom.includes(id)) {
-                          const newIds = [...wecomOpenClawConfig.allowFrom, id];
-                          handleWecomOpenClawChange({ allowFrom: newIds });
-                          setAllowedUserIdInput('');
-                          void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, allowFrom: newIds } });
-                        }
-                      }}
-                      className="px-3 py-2 rounded-lg text-xs font-medium bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20 transition-colors"
-                    >
-                      {i18nService.t('add') || '添加'}
-                    </button>
-                  </div>
-                  {wecomOpenClawConfig.allowFrom.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      {wecomOpenClawConfig.allowFrom.map((id) => (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border dark:text-claude-darkText text-claude-text"
+                    {wecomOpenClawConfig.botId && (
+                      <div className="absolute right-2 inset-y-0 flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => { handleWecomOpenClawChange({ botId: '' }); void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, botId: '' } }); }}
+                          className="p-0.5 rounded text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-accent transition-colors"
+                          title={i18nService.t('clear') || 'Clear'}
                         >
-                          {id}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newIds = wecomOpenClawConfig.allowFrom.filter((uid) => uid !== id);
-                              handleWecomOpenClawChange({ allowFrom: newIds });
-                              void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, allowFrom: newIds } });
-                            }}
-                            className="text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                          >
-                            <XMarkIcon className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                          <XCircleIconSolid className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Group Policy */}
+                {/* Secret */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    Group Policy
+                    Secret
                   </label>
-                  <select
-                    value={wecomOpenClawConfig.groupPolicy}
-                    onChange={(e) => {
-                      const update = { groupPolicy: e.target.value as WecomOpenClawConfig['groupPolicy'] };
-                      handleWecomOpenClawChange(update);
-                      void handleSaveWecomOpenClawConfig(update);
-                    }}
-                    className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
-                  >
-                    <option value="open">Open</option>
-                    <option value="allowlist">Allowlist</option>
-                    <option value="disabled">Disabled</option>
-                  </select>
+                  <div className="relative">
+                    <input
+                      type={showSecrets['wecom.secret'] ? 'text' : 'password'}
+                      value={wecomOpenClawConfig.secret}
+                      onChange={(e) => handleWecomOpenClawChange({ secret: e.target.value })}
+                      onBlur={() => handleSaveWecomOpenClawConfig()}
+                      className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 pr-16 text-sm transition-colors"
+                      placeholder="••••••••••••"
+                    />
+                    <div className="absolute right-2 inset-y-0 flex items-center gap-1">
+                      {wecomOpenClawConfig.secret && (
+                        <button
+                          type="button"
+                          onClick={() => { handleWecomOpenClawChange({ secret: '' }); void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, secret: '' } }); }}
+                          className="p-0.5 rounded text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-accent transition-colors"
+                          title={i18nService.t('clear') || 'Clear'}
+                        >
+                          <XCircleIconSolid className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowSecrets(prev => ({ ...prev, 'wecom.secret': !prev['wecom.secret'] }))}
+                        className="p-0.5 rounded text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-claude-accent transition-colors"
+                        title={showSecrets['wecom.secret'] ? (i18nService.t('hide') || 'Hide') : (i18nService.t('show') || 'Show')}
+                      >
+                        {showSecrets['wecom.secret'] ? <EyeIcon className="h-4 w-4" /> : <EyeSlashIcon className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
+                    {i18nService.t('imWecomCredentialHint')}
+                  </p>
                 </div>
 
-                {/* Send Thinking Message */}
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    {i18nService.t('imSendThinkingMessage')}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const update = { sendThinkingMessage: !wecomOpenClawConfig.sendThinkingMessage };
-                      handleWecomOpenClawChange(update);
-                      void handleSaveWecomOpenClawConfig(update);
-                    }}
-                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                      wecomOpenClawConfig.sendThinkingMessage ? 'bg-claude-accent' : 'dark:bg-claude-darkSurface bg-claude-surface'
-                    }`}
-                  >
-                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      wecomOpenClawConfig.sendThinkingMessage ? 'translate-x-4' : 'translate-x-0'
-                    }`} />
-                  </button>
-                </div>
+                {/* Advanced Settings (collapsible) */}
+                <details className="group">
+                  <summary className="cursor-pointer text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-accent transition-colors">
+                    {i18nService.t('imAdvancedSettings')}
+                  </summary>
+                  <div className="mt-2 space-y-3 pl-2 border-l-2 border-claude-border/30 dark:border-claude-darkBorder/30">
+                    {/* DM Policy */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                        DM Policy
+                      </label>
+                      <select
+                        value={wecomOpenClawConfig.dmPolicy}
+                        onChange={(e) => {
+                          const update = { dmPolicy: e.target.value as WecomOpenClawConfig['dmPolicy'] };
+                          handleWecomOpenClawChange(update);
+                          void handleSaveWecomOpenClawConfig(update);
+                        }}
+                        className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
+                      >
+                        <option value="open">{i18nService.t('imDmPolicyOpen')}</option>
+                        <option value="pairing">{i18nService.t('imDmPolicyPairing')}</option>
+                        <option value="allowlist">{i18nService.t('imDmPolicyAllowlist')}</option>
+                        <option value="disabled">{i18nService.t('imDmPolicyDisabled')}</option>
+                      </select>
+                    </div>
+
+                    {/* Pairing Requests (shown when dmPolicy is 'pairing') */}
+                    {wecomOpenClawConfig.dmPolicy === 'pairing' && renderPairingSection('wecom')}
+
+                    {/* Allow From */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                        Allow From (User IDs)
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={allowedUserIdInput}
+                          onChange={(e) => setAllowedUserIdInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const id = allowedUserIdInput.trim();
+                              if (id && !wecomOpenClawConfig.allowFrom.includes(id)) {
+                                const newIds = [...wecomOpenClawConfig.allowFrom, id];
+                                handleWecomOpenClawChange({ allowFrom: newIds });
+                                setAllowedUserIdInput('');
+                                void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, allowFrom: newIds } });
+                              }
+                            }
+                          }}
+                          className="block flex-1 rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
+                          placeholder={i18nService.t('imWecomUserIdPlaceholder')}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const id = allowedUserIdInput.trim();
+                            if (id && !wecomOpenClawConfig.allowFrom.includes(id)) {
+                              const newIds = [...wecomOpenClawConfig.allowFrom, id];
+                              handleWecomOpenClawChange({ allowFrom: newIds });
+                              setAllowedUserIdInput('');
+                              void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, allowFrom: newIds } });
+                            }
+                          }}
+                          className="px-3 py-2 rounded-lg text-xs font-medium bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20 transition-colors"
+                        >
+                          {i18nService.t('add') || '添加'}
+                        </button>
+                      </div>
+                      {wecomOpenClawConfig.allowFrom.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {wecomOpenClawConfig.allowFrom.map((id) => (
+                            <span
+                              key={id}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border dark:text-claude-darkText text-claude-text"
+                            >
+                              {id}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newIds = wecomOpenClawConfig.allowFrom.filter((uid) => uid !== id);
+                                  handleWecomOpenClawChange({ allowFrom: newIds });
+                                  void imService.updateConfig({ wecom: { ...wecomOpenClawConfig, allowFrom: newIds } });
+                                }}
+                                className="text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                              >
+                                <XMarkIcon className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Group Policy */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                        Group Policy
+                      </label>
+                      <select
+                        value={wecomOpenClawConfig.groupPolicy}
+                        onChange={(e) => {
+                          const update = { groupPolicy: e.target.value as WecomOpenClawConfig['groupPolicy'] };
+                          handleWecomOpenClawChange(update);
+                          void handleSaveWecomOpenClawConfig(update);
+                        }}
+                        className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
+                      >
+                        <option value="open">Open</option>
+                        <option value="allowlist">Allowlist</option>
+                        <option value="disabled">Disabled</option>
+                      </select>
+                    </div>
+
+                    {/* Send Thinking Message */}
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                        {i18nService.t('imSendThinkingMessage')}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const update = { sendThinkingMessage: !wecomOpenClawConfig.sendThinkingMessage };
+                          handleWecomOpenClawChange(update);
+                          void handleSaveWecomOpenClawConfig(update);
+                        }}
+                        className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                          wecomOpenClawConfig.sendThinkingMessage ? 'bg-claude-accent' : 'dark:bg-claude-darkSurface bg-claude-surface'
+                        }`}
+                      >
+                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          wecomOpenClawConfig.sendThinkingMessage ? 'translate-x-4' : 'translate-x-0'
+                        }`} />
+                      </button>
+                    </div>
+                  </div>
+                </details>
               </div>
-            </details>
+            )}
 
+            {/* Shared: connectivity test + status (visible in both tabs) */}
             <div className="pt-1">
               {renderConnectivityTestButton('wecom')}
             </div>

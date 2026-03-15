@@ -246,7 +246,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkOpenClawInstall: '启动 OpenClaw',
     coworkOpenClawRetryInstall: '重试启动 OpenClaw',
     coworkOpenClawStart: '启动 OpenClaw',
-    coworkOpenClawRunning: 'OpenClaw 已运行',
     coworkOpenClawInstalling: '正在启动 OpenClaw...',
     coworkOpenClawInstallHint: 'OpenClaw 运行时已内置。切换到该引擎或启动任务时会自动拉起网关。',
     coworkOpenClawGoToSettingsInstall: '查看引擎设置',
@@ -693,6 +692,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imWecomCredentialHint: '从企业微信管理后台获取 Bot ID 和 Secret',
     imWecomUserIdPlaceholder: '输入企业微信 User ID',
     imWecomBotIdPlaceholder: '您的 Bot ID',
+    imWecomQuickSetup: '快捷配置',
+    imWecomManualSetup: '手动配置',
+    imWecomQuickSetupDesc: '扫码创建企业微信机器人，自动填入凭证',
+    imWecomQuickSetupBtn: '扫码创建机器人',
+    imWecomQuickSetupPending: '等待扫码授权...',
+    imWecomQuickSetupSuccess: '机器人创建成功，凭证已自动填入',
+    imWecomQuickSetupError: '创建失败',
 
     // 通用设置
     autoLaunch: '开机自启动',
@@ -1078,7 +1084,6 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkOpenClawInstall: 'Start OpenClaw',
     coworkOpenClawRetryInstall: 'Retry OpenClaw Startup',
     coworkOpenClawStart: 'Start OpenClaw',
-    coworkOpenClawRunning: 'OpenClaw Running',
     coworkOpenClawInstalling: 'Starting OpenClaw...',
     coworkOpenClawInstallHint: 'OpenClaw runtime is bundled. Switching to this engine or starting a task will auto-start the gateway.',
     coworkOpenClawGoToSettingsInstall: 'View Engine Settings',
@@ -1525,6 +1530,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imWecomCredentialHint: 'Get Bot ID and Secret from WeCom Admin Console',
     imWecomUserIdPlaceholder: 'Enter WeCom User ID',
     imWecomBotIdPlaceholder: 'Your Bot ID',
+    imWecomQuickSetup: 'Quick Setup',
+    imWecomManualSetup: 'Manual Setup',
+    imWecomQuickSetupDesc: 'Scan QR code to create WeCom bot and auto-fill credentials',
+    imWecomQuickSetupBtn: 'Scan to Create Bot',
+    imWecomQuickSetupPending: 'Waiting for QR code authorization...',
+    imWecomQuickSetupSuccess: 'Bot created successfully, credentials auto-filled',
+    imWecomQuickSetupError: 'Creation failed',
 
     // General Settings
     autoLaunch: 'Launch at Login',

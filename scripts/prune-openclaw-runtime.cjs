@@ -47,7 +47,6 @@ const PATTERNS_TO_DELETE = [
 ];
 
 const DIRS_TO_DELETE = new Set([
-  'docs',
   'test',
   'tests',
   '__tests__',
@@ -69,8 +68,7 @@ const PACKAGES_TO_STUB = [
   'playwright-core',  // Browser automation — gateway doesn't launch browsers
 ];
 
-const GENERIC_STUB_INDEX = `// Stub: this package is not needed for headless gateway operation.
-// Import succeeds; actual calls throw (callers have try-catch protection).
+const GENERIC_STUB_INDEX_CJS = `// Stub (CJS): this package is not needed for headless gateway operation.
 module.exports = new Proxy({}, {
   get(_, prop) {
     if (prop === '__esModule') return false;
@@ -81,6 +79,25 @@ module.exports = new Proxy({}, {
     };
   }
 });
+`;
+
+const GENERIC_STUB_INDEX_ESM = `// Stub (ESM): this package is not needed for headless gateway operation.
+const handler = {
+  get(_, prop) {
+    if (prop === 'then') return undefined;
+    return function() {
+      throw new Error('This package is not available in this build (stub)');
+    };
+  }
+};
+const stub = new Proxy({}, handler);
+export default stub;
+export const chromium = stub;
+export const devices = stub;
+export const firefox = stub;
+export const webkit = stub;
+export const getDocument = stub;
+export const version = '0.0.0-stub';
 `;
 
 function stubPackage(pkgDir, pkgName, stats) {
@@ -97,13 +114,20 @@ function stubPackage(pkgDir, pkgName, stats) {
   fs.rmSync(pkgDir, { recursive: true, force: true });
   fs.mkdirSync(pkgDir, { recursive: true });
 
-  // Write stub files
-  fs.writeFileSync(path.join(pkgDir, 'index.js'), GENERIC_STUB_INDEX, 'utf8');
+  // Write dual CJS + ESM stub files
+  fs.writeFileSync(path.join(pkgDir, 'index.js'), GENERIC_STUB_INDEX_CJS, 'utf8');
+  fs.writeFileSync(path.join(pkgDir, 'index.mjs'), GENERIC_STUB_INDEX_ESM, 'utf8');
   fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({
     name: pkgName,
     version,
     main: 'index.js',
-    type: 'commonjs',
+    exports: {
+      '.': {
+        import: './index.mjs',
+        require: './index.js',
+        default: './index.js',
+      },
+    },
   }, null, 2) + '\n', 'utf8');
 
   stats.stubbed.push(pkgName);

@@ -39,12 +39,22 @@
     "!**/tsconfig.*.json",
     "!**/*.test.*",
     "!**/*.spec.*",
-    "!**/docs/**",
     "!**/tests/**",
     "!**/test/**",
     "!**/__tests__/**"
   ],
   "extraResources": [
+    {
+      "from": "SKILLs",
+      "to": "SKILLs",
+      "filter": [
+        "**/*",
+        "!**/.env",
+        "!**/.env.*",
+        "!**/.venv",
+        "!**/.venv/**"
+      ]
+    },
     {
       "from": "resources/tray",
       "to": "tray",
@@ -71,14 +81,51 @@
     },
     "extraResources": [
       {
-        "from": "SKILLs",
-        "to": "SKILLs",
+        "from": "vendor/openclaw-runtime/current",
+        "to": "cfmind",
         "filter": [
           "**/*",
-          "!**/.env",
-          "!**/.env.*",
-          "!**/.venv",
-          "!**/.venv/**"
+          "!**/*.map",
+          "!**/*.d.ts",
+          "!**/*.d.cts",
+          "!**/*.d.mts",
+          "!**/README.md",
+          "!**/README",
+          "!**/readme.md",
+          "!**/CHANGELOG.md",
+          "!**/CHANGELOG",
+          "!**/HISTORY.md",
+          "!**/LICENSE",
+          "!**/LICENSE.md",
+          "!**/LICENSE.txt",
+          "!**/.eslintrc*",
+          "!**/.prettierrc*",
+          "!**/tsconfig.json",
+          "!**/tsconfig.*.json",
+          "!**/*.test.*",
+          "!**/*.spec.*",
+                "!**/tests/**",
+          "!**/test/**",
+          "!**/__tests__/**"
+        ]
+      }
+    ]
+  },
+  "dmg": {
+    "sign": false
+  },
+  "afterSign": "scripts/notarize.js",
+  "win": {
+    "target": [
+      "nsis"
+    ],
+    "icon": "build/icons/win/icon.ico",
+    "extraResources": [
+      {
+        "from": "resources/python-win",
+        "to": "python-win",
+        "filter": [
+          "**/*"
         ]
       },
       {
@@ -105,24 +152,11 @@
           "!**/tsconfig.*.json",
           "!**/*.test.*",
           "!**/*.spec.*",
-          "!**/docs/**",
-          "!**/tests/**",
+                "!**/tests/**",
           "!**/test/**",
           "!**/__tests__/**"
         ]
-      }
-    ]
-  },
-  "dmg": {
-    "sign": false
-  },
-  "afterSign": "scripts/notarize.js",
-  "win": {
-    "target": [
-      "nsis"
-    ],
-    "icon": "build/icons/win/icon.ico",
-    "extraResources": [
+      },
       {
         "from": "vendor/openclaw-runtime/cfmind.tar",
         "to": "cfmind.tar"
@@ -150,17 +184,6 @@
     "category": "Utility",
     "extraResources": [
       {
-        "from": "SKILLs",
-        "to": "SKILLs",
-        "filter": [
-          "**/*",
-          "!**/.env",
-          "!**/.env.*",
-          "!**/.venv",
-          "!**/.venv/**"
-        ]
-      },
-      {
         "from": "vendor/openclaw-runtime/current",
         "to": "cfmind",
         "filter": [
@@ -184,8 +207,7 @@
           "!**/tsconfig.*.json",
           "!**/*.test.*",
           "!**/*.spec.*",
-          "!**/docs/**",
-          "!**/tests/**",
+                "!**/tests/**",
           "!**/test/**",
           "!**/__tests__/**"
         ]

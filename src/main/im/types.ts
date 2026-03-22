@@ -281,6 +281,7 @@ export interface PopoGatewayStatus {
 
 export interface WeixinOpenClawConfig {
   enabled: boolean;
+  accountId: string;
   dmPolicy: 'open' | 'pairing' | 'allowlist' | 'disabled';
   allowFrom: string[];
   groupPolicy: 'open' | 'allowlist' | 'disabled';
@@ -572,6 +573,7 @@ export const DEFAULT_POPO_CONFIG: PopoOpenClawConfig = {
 
 export const DEFAULT_WEIXIN_CONFIG: WeixinOpenClawConfig = {
   enabled: false,
+  accountId: '',
   dmPolicy: 'open',
   allowFrom: [],
   groupPolicy: 'open',

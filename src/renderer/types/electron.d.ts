@@ -644,6 +644,7 @@ interface PopoOpenClawConfig {
 
 interface WeixinOpenClawConfig {
   enabled: boolean;
+  accountId: string;
   dmPolicy: 'open' | 'pairing' | 'allowlist' | 'disabled';
   allowFrom: string[];
   groupPolicy: 'open' | 'allowlist' | 'disabled';

@@ -11,7 +11,7 @@ import { RootState } from '../../store';
 import { imService } from '../../services/im';
 import { setDingTalkConfig, setFeishuConfig, setTelegramOpenClawConfig, setQQConfig, setDiscordConfig, setNimConfig, setXiaomifengConfig, setWecomConfig, setWeixinConfig, setPopoConfig, clearError } from '../../store/slices/imSlice';
 import { i18nService } from '../../services/i18n';
-import type { IMPlatform, IMConnectivityCheck, IMConnectivityTestResult, IMGatewayConfig, TelegramOpenClawConfig, DiscordOpenClawConfig, FeishuOpenClawConfig, DingTalkOpenClawConfig, QQOpenClawConfig, WecomOpenClawConfig, WeixinOpenClawConfig, PopoOpenClawConfig } from '../../types/im';
+import type { IMPlatform, IMConnectivityCheck, IMConnectivityTestResult, IMGatewayConfig, TelegramOpenClawConfig, DiscordOpenClawConfig, FeishuOpenClawConfig, DingTalkOpenClawConfig, QQOpenClawConfig, WecomOpenClawConfig, PopoOpenClawConfig } from '../../types/im';
 import { getVisibleIMPlatforms } from '../../utils/regionFilter';
 import WecomAIBotSDK from '@wecom/wecom-aibot-sdk';
 import { QRCodeSVG } from 'qrcode.react';
@@ -410,9 +410,6 @@ const IMSettings: React.FC = () => {
   const [popoAllowedUserIdInput, setPopoAllowedUserIdInput] = useState('');
   const [popoGroupAllowIdInput, setPopoGroupAllowIdInput] = useState('');
 
-  // State for Weixin allow-from inputs
-  const [weixinAllowedUserIdInput, setWeixinAllowedUserIdInput] = useState('');
-  const [weixinGroupAllowIdInput, setWeixinGroupAllowIdInput] = useState('');
 
   // Handle Xiaomifeng config change
   const handleXiaomifengChange = (field: 'clientId' | 'secret', value: string) => {
@@ -432,18 +429,8 @@ const IMSettings: React.FC = () => {
     await imService.persistConfig({ wecom: configToSave });
   };
 
-  // Handle Weixin OpenClaw config change
+  // Handle Weixin OpenClaw config
   const weixinOpenClawConfig = config.weixin;
-  const handleWeixinOpenClawChange = (update: Partial<WeixinOpenClawConfig>) => {
-    dispatch(setWeixinConfig(update));
-  };
-  const handleSaveWeixinOpenClawConfig = async (override?: Partial<WeixinOpenClawConfig>) => {
-    if (!configLoaded) return;
-    const configToSave = override
-      ? { ...weixinOpenClawConfig, ...override }
-      : weixinOpenClawConfig;
-    await imService.persistConfig({ weixin: configToSave });
-  };
 
   // Handle POPO OpenClaw config change
   const popoConfig = config.popo;
@@ -519,9 +506,10 @@ const IMSettings: React.FC = () => {
 
       if (waitResult.success && waitResult.connected) {
         setWeixinQrStatus('success');
-        // Enable weixin and save config
-        const fullConfig = { ...weixinOpenClawConfig, enabled: true };
-        dispatch(setWeixinConfig({ enabled: true }));
+        // Enable weixin and save config with accountId
+        const accountId = waitResult.accountId || '';
+        const fullConfig = { ...weixinOpenClawConfig, enabled: true, accountId };
+        dispatch(setWeixinConfig({ enabled: true, accountId }));
         dispatch(clearError());
         await imService.updateConfig({ weixin: fullConfig });
         await imService.loadStatus();
@@ -3024,14 +3012,6 @@ const IMSettings: React.FC = () => {
                       <QRCodeSVG value={weixinQrUrl} size={192} />
                     </div>
                   </div>
-                  {weixinQrStatus === 'waiting' && (
-                    <div className="flex items-center justify-center gap-2">
-                      <ArrowPathIcon className="h-4 w-4 animate-spin text-claude-accent" />
-                      <span className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
-                        {i18nService.t('imWeixinQrWaiting')}
-                      </span>
-                    </div>
-                  )}
                 </div>
               )}
               {weixinQrStatus === 'success' && (
@@ -3052,218 +3032,17 @@ const IMSettings: React.FC = () => {
               guideUrl={IM_GUIDE_URLS.weixin}
             />
 
-            {/* Advanced Settings (collapsible) */}
-            <details className="group">
-              <summary className="cursor-pointer text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-accent transition-colors">
-                {i18nService.t('imAdvancedSettings')}
-              </summary>
-              <div className="mt-2 space-y-3 pl-2 border-l-2 border-claude-border/30 dark:border-claude-darkBorder/30">
-                {/* DM Policy */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    DM Policy
-                  </label>
-                  <select
-                    value={weixinOpenClawConfig.dmPolicy}
-                    onChange={(e) => {
-                      const update = { dmPolicy: e.target.value as WeixinOpenClawConfig['dmPolicy'] };
-                      handleWeixinOpenClawChange(update);
-                      void handleSaveWeixinOpenClawConfig(update);
-                    }}
-                    className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
-                  >
-                    <option value="open">{i18nService.t('imDmPolicyOpen')}</option>
-                    <option value="pairing">{i18nService.t('imDmPolicyPairing')}</option>
-                    <option value="allowlist">{i18nService.t('imDmPolicyAllowlist')}</option>
-                    <option value="disabled">{i18nService.t('imDmPolicyDisabled')}</option>
-                  </select>
-                </div>
-
-                {/* Pairing Requests (shown when dmPolicy is 'pairing') */}
-                {weixinOpenClawConfig.dmPolicy === 'pairing' && renderPairingSection('weixin')}
-
-                {/* Allow From */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    Allow From (User IDs)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={weixinAllowedUserIdInput}
-                      onChange={(e) => setWeixinAllowedUserIdInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const id = weixinAllowedUserIdInput.trim();
-                          if (id && !weixinOpenClawConfig.allowFrom.includes(id)) {
-                            const newIds = [...weixinOpenClawConfig.allowFrom, id];
-                            handleWeixinOpenClawChange({ allowFrom: newIds });
-                            setWeixinAllowedUserIdInput('');
-                            void imService.persistConfig({ weixin: { ...weixinOpenClawConfig, allowFrom: newIds } });
-                          }
-                        }
-                      }}
-                      className="block flex-1 rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
-                      placeholder={i18nService.t('imUserIdPlaceholder') || 'Enter user ID'}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const id = weixinAllowedUserIdInput.trim();
-                        if (id && !weixinOpenClawConfig.allowFrom.includes(id)) {
-                          const newIds = [...weixinOpenClawConfig.allowFrom, id];
-                          handleWeixinOpenClawChange({ allowFrom: newIds });
-                          setWeixinAllowedUserIdInput('');
-                          void imService.persistConfig({ weixin: { ...weixinOpenClawConfig, allowFrom: newIds } });
-                        }
-                      }}
-                      className="px-3 py-2 rounded-lg text-xs font-medium bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20 transition-colors"
-                    >
-                      {i18nService.t('add') || '添加'}
-                    </button>
-                  </div>
-                  {weixinOpenClawConfig.allowFrom.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      {weixinOpenClawConfig.allowFrom.map((id) => (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border dark:text-claude-darkText text-claude-text"
-                        >
-                          {id}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newIds = weixinOpenClawConfig.allowFrom.filter((uid) => uid !== id);
-                              handleWeixinOpenClawChange({ allowFrom: newIds });
-                              void imService.persistConfig({ weixin: { ...weixinOpenClawConfig, allowFrom: newIds } });
-                            }}
-                            className="text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                          >
-                            <XMarkIcon className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Group Policy */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    Group Policy
-                  </label>
-                  <select
-                    value={weixinOpenClawConfig.groupPolicy}
-                    onChange={(e) => {
-                      const update = { groupPolicy: e.target.value as WeixinOpenClawConfig['groupPolicy'] };
-                      handleWeixinOpenClawChange(update);
-                      void handleSaveWeixinOpenClawConfig(update);
-                    }}
-                    className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
-                  >
-                    <option value="open">Open</option>
-                    <option value="allowlist">Allowlist</option>
-                    <option value="disabled">Disabled</option>
-                  </select>
-                </div>
-
-                {/* Group Allow From (shown when groupPolicy is 'allowlist') */}
-                {weixinOpenClawConfig.groupPolicy === 'allowlist' && (
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                      Group Allow From (Group IDs)
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={weixinGroupAllowIdInput}
-                        onChange={(e) => setWeixinGroupAllowIdInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            const id = weixinGroupAllowIdInput.trim();
-                            if (id && !weixinOpenClawConfig.groupAllowFrom.includes(id)) {
-                              const newIds = [...weixinOpenClawConfig.groupAllowFrom, id];
-                              handleWeixinOpenClawChange({ groupAllowFrom: newIds });
-                              setWeixinGroupAllowIdInput('');
-                              void imService.persistConfig({ weixin: { ...weixinOpenClawConfig, groupAllowFrom: newIds } });
-                            }
-                          }
-                        }}
-                        className="block flex-1 rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
-                        placeholder={i18nService.t('imGroupIdPlaceholder') || 'Enter group ID'}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const id = weixinGroupAllowIdInput.trim();
-                          if (id && !weixinOpenClawConfig.groupAllowFrom.includes(id)) {
-                            const newIds = [...weixinOpenClawConfig.groupAllowFrom, id];
-                            handleWeixinOpenClawChange({ groupAllowFrom: newIds });
-                            setWeixinGroupAllowIdInput('');
-                            void imService.persistConfig({ weixin: { ...weixinOpenClawConfig, groupAllowFrom: newIds } });
-                          }
-                        }}
-                        className="px-3 py-2 rounded-lg text-xs font-medium bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20 transition-colors"
-                      >
-                        {i18nService.t('add') || '添加'}
-                      </button>
-                    </div>
-                    {weixinOpenClawConfig.groupAllowFrom.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        {weixinOpenClawConfig.groupAllowFrom.map((id) => (
-                          <span
-                            key={id}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border dark:text-claude-darkText text-claude-text"
-                          >
-                            {id}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newIds = weixinOpenClawConfig.groupAllowFrom.filter((gid) => gid !== id);
-                                handleWeixinOpenClawChange({ groupAllowFrom: newIds });
-                                void imService.persistConfig({ weixin: { ...weixinOpenClawConfig, groupAllowFrom: newIds } });
-                              }}
-                              className="text-claude-textSecondary dark:text-claude-darkTextSecondary hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                            >
-                              <XMarkIcon className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Debug toggle */}
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    Debug
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const update = { debug: !weixinOpenClawConfig.debug };
-                      handleWeixinOpenClawChange(update);
-                      void handleSaveWeixinOpenClawConfig(update);
-                    }}
-                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                      weixinOpenClawConfig.debug ? 'bg-claude-accent' : 'dark:bg-claude-darkSurface bg-claude-surface'
-                    }`}
-                  >
-                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      weixinOpenClawConfig.debug ? 'translate-x-4' : 'translate-x-0'
-                    }`} />
-                  </button>
-                </div>
-              </div>
-            </details>
-
             {/* Connectivity test */}
             <div className="pt-1">
               {renderConnectivityTestButton('weixin')}
             </div>
+
+            {/* Account ID display */}
+            {weixinOpenClawConfig.accountId && (
+              <div className="text-xs text-green-600 dark:text-green-400 bg-green-500/10 px-3 py-2 rounded-lg">
+                Account ID: {weixinOpenClawConfig.accountId}
+              </div>
+            )}
 
             {/* Error display */}
             {status.weixin?.lastError && (
